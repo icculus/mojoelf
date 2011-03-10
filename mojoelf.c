@@ -237,9 +237,11 @@ typedef struct ElfHandle
     size_t mmaplen;
     int syms_count;
     ElfSymbols *syms;
+    void *fini;
+    #if MOJOELF_ALLOW_SYSTEM_RESOLVE
     int dlopens_count;
     void **dlopens;
-    void *fini;
+    #endif
 } ElfHandle;
 
 void MOJOELF_dlclose(void *lib)
@@ -252,6 +254,7 @@ void MOJOELF_dlclose(void *lib)
 
     // !!! FIXME: call h->fini().
 
+    #if MOJOELF_ALLOW_SYSTEM_RESOLVE
     if (h->dlopens != NULL)
     {
         for (i = 0; i < h->dlopens_count; i++)
@@ -261,6 +264,7 @@ void MOJOELF_dlclose(void *lib)
         } // for
         free(h->dlopens);
     } // if
+    #endif
 
     if (h->mmapaddr != MAP_FAILED)
         munmap(h->mmapaddr, h->mmaplen);
