@@ -29,8 +29,9 @@ const char *MOJOELF_dlerror(void);
 #define MOJOELF_TEST 1   // compiles a main() for a test app.
 #define MOJOELF_SUPPORT_DLERROR 1
 #define MOJOELF_SUPPORT_DLOPEN_FILE 1
-#define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
+//#define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
 
+typedef intptr_t intptr;
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
@@ -82,12 +83,22 @@ typedef uintptr_t uintptr;
     #define MOJOELF_SIZEOF_ELF_HEADER 52
     #define MOJOELF_SIZEOF_PROGRAM_HEADER 32
     #define MOJOELF_SIZEOF_SECTION_HEADER 40
+    #define MOJOELF_SIZEOF_RELENT 8
+    #define MOJOELF_SIZEOF_RELAENT 12
+    #define MOJOELF_SIZEOF_SYMENT 16
+    #define ELF_R_SYM(x) (uint32) ((x) >> 8)
+    #define ELF_R_TYPE(x) (uint32) ((x) & 0xFF)
 #elif MOJOELF_64BIT
     #define MOJOELF_PAGESIZE 4096
     #define MOJOELF_ELFCLASS 2  // ELFCLASS64
     #define MOJOELF_SIZEOF_ELF_HEADER 64
     #define MOJOELF_SIZEOF_PROGRAM_HEADER 56
     #define MOJOELF_SIZEOF_SECTION_HEADER 64
+    #define MOJOELF_SIZEOF_RELENT 16
+    #define MOJOELF_SIZEOF_RELAENT 24
+    #define MOJOELF_SIZEOF_SYMENT 24
+    #define ELF_R_SYM(i) ((uint32) ((i) >> 32))
+    #define ELF_R_TYPE(i) ((uint32) ((i) & 0xFFFFFFFF))
 #else
     #error Please define your platform.
 #endif
@@ -156,10 +167,41 @@ typedef struct ElfSection
     uintptr sh_entsize;
 } ElfSection;
 
+typedef struct ElfSymTable
+{
+    uint32 st_name;
+    #if MOJOELF_64BIT  // 64-bit ABI moved it here for alignment purposes. :/
+    uint8 st_info;
+    uint8 st_other;
+    uint16 st_shndx;
+    #endif
+    uintptr st_value;
+    uintptr st_size;
+    #if MOJOELF_32BIT
+    uint8 st_info;
+    uint8 st_other;
+    uint16 st_shndx;
+    #endif
+} ElfSymTable;
+
+typedef struct ElfRel
+{
+    uintptr r_offset;
+    uintptr r_info;
+} ElfRel;
+
+typedef struct ElfRelA
+{
+    uintptr r_offset;
+    uintptr r_info;
+    intptr r_addend;
+} ElfRelA;
+
 typedef struct ElfSymbols
 {
     char *sym;
     void *addr;
+    struct ElfSymbols *next;
 } ElfSymbols;
 
 typedef struct ElfHandle  // this is what MOJOELF_dlopen_mem() returns.
@@ -167,7 +209,6 @@ typedef struct ElfHandle  // this is what MOJOELF_dlopen_mem() returns.
     int mmaps_count;
     void *mmapaddr;
     size_t mmaplen;
-    int syms_count;
     ElfSymbols *syms;
     void *fini;
     int dlopens_count;
@@ -210,8 +251,9 @@ typedef struct ElfContext
     uintptr base;  // "base address" for relative addressing.
     void *init;   // init function in shared library.
     size_t mmaplen;  // number of bytes we want to mmap().
-    const char *symtab;  // string table for dynamic symbols.
-    size_t symtablen;  // length in bytes of dynamic symbol string table.
+    const char *strtab;  // string table for dynamic symbols.
+    size_t strtablen;  // length in bytes of dynamic symbol string table.
+    const ElfSymTable *symtab;  // the symbol table.
     const ElfDynTable *dyntabs[24];  // indexable pointers to dynamic tables.
 } ElfContext;
 
@@ -332,7 +374,7 @@ static int map_pages(ElfContext *ctx)
     void *mmapaddr = mmap(NULL, mmaplen, mmapprot, mmapflags, -1, 0);
     int i;
 
-    if (mmapaddr == MAP_FAILED)
+    if (mmapaddr == ((void *) MAP_FAILED))
         DLOPEN_FAIL("mmap failed");
 
     memset(mmapaddr, '\0', mmaplen);
@@ -382,7 +424,7 @@ static int walk_dynamic_table(ElfContext *ctx)
         if (tag < (sizeof (ctx->dyntabs) / sizeof (ctx->dyntabs[0])))
         {
             if (ctx->dyntabs[tag] != NULL)
-                DLOPEN_FAIL("Multiple dynamic tables");
+                DLOPEN_FAIL("Illegal duplicate dynamic tables");
             ctx->dyntabs[tag] = dyntab;
         } // if
     } // for
@@ -392,19 +434,55 @@ static int walk_dynamic_table(ElfContext *ctx)
     // Now that we've shuffled this stuff into an index, process it.
 
     if (ctx->dyntabs[5] == NULL)  // DT_STRTAB
-        DLOPEN_FAIL("No dynamic string table");
+        DLOPEN_FAIL("No DT_STRTAB table");
     else if (ctx->dyntabs[10] == NULL)  // DT_STRSZ
-        DLOPEN_FAIL("No dynamic string table size");
+        DLOPEN_FAIL("No DT_STRSZ table");
+    else if (ctx->dyntabs[6] == NULL)  // DT_SYMTAB
+        DLOPEN_FAIL("No DT_SYMTAB table");
+    else if (ctx->dyntabs[11] == NULL)  // DT_SYMENT
+        DLOPEN_FAIL("No DT_SYMENT table");
+    else if (ctx->dyntabs[11]->d_un.d_val != MOJOELF_SIZEOF_SYMENT) // DT_SYMENT
+        DLOPEN_FAIL("Bogus DT_SYMENT value");
 
-    ctx->symtablen = (size_t) ctx->dyntabs[10]->d_un.d_val;  // DT_STRSZ
-    ctx->symtab = (const char *) (ctx->buf + ctx->dyntabs[5]->d_un.d_ptr);
-    if (ctx->symtablen == 0)  // technically this is allowed, but oh well.
+    // !!! FIXME: is there a size of the symbol table without parsing
+    // !!! FIXME:  the section headers?
+    if (ctx->dyntabs[6]->d_un.d_ptr >= ctx->buflen)  // DT_SYMTAB
+        DLOPEN_FAIL("Bogus DT_SYMTAB offset");
+    ctx->symtab = (const ElfSymTable *) (ctx->buf+ctx->dyntabs[6]->d_un.d_ptr);
+
+    if (ctx->dyntabs[7])  // DT_RELA
+    {
+        if (ctx->dyntabs[8] == NULL)  // DT_RELASZ
+            DLOPEN_FAIL("No DT_RELASZ table");
+        else if (ctx->dyntabs[9] == NULL)  // DT_RELAENT
+            DLOPEN_FAIL("No DT_RELAENT table");
+    } // if
+
+    if (ctx->dyntabs[17])  // DT_REL
+    {
+        if (ctx->dyntabs[18] == NULL)  // DT_RELSZ
+            DLOPEN_FAIL("No DT_RELSZ table");
+        else if (ctx->dyntabs[19] == NULL)  // DT_RELENT
+            DLOPEN_FAIL("No DT_RELENT table");
+    } // if
+
+    if (ctx->dyntabs[23])  // DT_JMPREL
+    {
+        if (ctx->dyntabs[20] == NULL)  // DT_PLTREL
+            DLOPEN_FAIL("No DT_PLTREL table");
+        if (ctx->dyntabs[2] == NULL)  // DT_PLTRELSZ
+            DLOPEN_FAIL("No DT_PLTRELSZ table");
+    } // if
+
+    ctx->strtablen = (size_t) ctx->dyntabs[10]->d_un.d_val;  // DT_STRSZ
+    ctx->strtab = (const char *) (ctx->buf + ctx->dyntabs[5]->d_un.d_ptr);
+    if (ctx->strtablen == 0)  // technically this is allowed, but oh well.
         DLOPEN_FAIL("Dynamic string table is empty");
-    else if ((ctx->dyntabs[5]->d_un.d_ptr + ctx->symtablen) > ctx->buflen)
+    else if ((ctx->dyntabs[5]->d_un.d_ptr + ctx->strtablen) > ctx->buflen)
         DLOPEN_FAIL("Dynamic string table has bogus offset and/or length");
-    else if (ctx->symtab[0] != '\0')
+    else if (ctx->strtab[0] != '\0')
         DLOPEN_FAIL("Dynamic string table doesn't start with null byte");
-    else if (ctx->symtab[ctx->symtablen - 1] != '\0')
+    else if (ctx->strtab[ctx->strtablen - 1] != '\0')
         DLOPEN_FAIL("Dynamic string table doesn't end with null byte");
 
     if (ctx->dyntabs[12])  // DT_INIT
@@ -447,11 +525,11 @@ static int load_external_dependencies(ElfContext *ctx)
         if (dyntab->d_tag == 1)  // DT_NEEDED
         {
             const size_t offset = dyntab->d_un.d_val;
-            if (offset >= ctx->symtablen)
+            if (offset >= ctx->strtablen)
                 DLOPEN_FAIL("Bogus DT_NEEDED string");
             else
             {
-                const char *str = ctx->symtab + offset;
+                const char *str = ctx->strtab + offset;
                 void *lib = dlopen(str, RTLD_NOW);
                 if (lib == NULL)
                     DLOPEN_FAIL("Couldn't load dependency");
@@ -470,9 +548,115 @@ static int load_external_dependencies(ElfContext *ctx)
 } // load_external_dependencies
 
 
+static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
+{
+    // !!! FIXME: figure out symbol table count, fail if sym >= to it.
+    const ElfSymTable *symbol = ctx->symtab + sym;
+    const char *symstr = NULL;
+
+    if (symbol->st_name >= ctx->strtablen)
+        DLOPEN_FAIL("Bogus symbol name");
+
+    symstr = ctx->strtab + symbol->st_name;
+
+    *_addr = symbol->st_value;
+    if ((sym == 0) || (*symstr == '\0'))
+        return 1;  // we're done already.
+
+    printf("Resolving '%s' ...\n", symstr);
+
+    if (symbol->st_shndx == 0)  // SHN_UNDEF
+    {
+        void *addr = NULL;
+
+        #if MOJOELF_ALLOW_SYSTEM_RESOLVE
+        addr = dlsym(NULL, symstr);
+        int i;
+        for (i = 0; (addr == NULL) && (i < ctx->retval->dlopens_count); i++)
+            addr = dlsym(ctx->retval->dlopens[i], symstr);
+        #endif
+
+        // !!! FIXME: let app supply symbol, too.
+
+        if (addr == NULL)
+            DLOPEN_FAIL("Couldn't resolve symbol");
+
+        *_addr = (uintptr) addr;
+    } // if
+
+    else  // This is a symbol we export, add it to our list.
+    {
+    } // else
+
+    return 1;
+} // resolve_sym
+
+static int fixup_rela(ElfContext *ctx)
+{
+    const ElfDynTable *dt_rela = ctx->dyntabs[7];  // DT_RELA
+    if (dt_rela)  // it's optional, we're done if it's not there.
+    {
+        const size_t offset = (size_t) dt_rela->d_un.d_ptr;
+        const size_t relasz = (size_t) ctx->dyntabs[8]->d_un.d_val;  // DT_RELASZ
+        const int relaent = (int) ctx->dyntabs[9]->d_un.d_val;  // DT_RELAENT
+        const size_t count = relasz / ((size_t) relaent);
+        const ElfRelA *rela = (const ElfRelA *) (ctx->buf + offset);
+        uint8 *mmapaddr = (uint8 *) ctx->retval->mmapaddr;
+        int i;
+
+        if (relaent != MOJOELF_SIZEOF_RELAENT)
+            DLOPEN_FAIL("Unsupported/bogus DT_RELAENT value");
+        else if (relasz % relaent)
+            DLOPEN_FAIL("Bogus DT_RELASZ value");
+        else if (offset + relasz >= ctx->buflen)
+            DLOPEN_FAIL("Bogus DT_RELA value");
+
+        for (i = 0; i < count; i++, rela++)
+        {
+            const uint32 r_type = ELF_R_TYPE(rela->r_info);
+            const uint32 r_sym = ELF_R_SYM(rela->r_info);
+            //const intptr r_addend = rela->r_addend;
+            //const uintptr r_offset = rela->r_offset;
+            //uintptr *fixup = (uintptr *) (mmapaddr + (r_offset - ctx->base));
+            uintptr addr = 0;
+
+            if (!resolve_symbol(ctx, r_sym, &addr))
+                return 0;
+
+            switch (r_type)
+            {
+                // There are way more than these, but these seem to be the
+                //  only ones average libraries use.
+                // Note libc.so.6 itself also seems to use:
+                //   R_X86_64_64, R_X86_64_TPOFF64
+                case 0:  // R_[X86_64|386]_NONE
+                    break;  // do nothing.
+                case 6:  // R_[X86_64|386]_GLOB_DATA
+                    break;
+                case 7:  // R_[X86_64|386]_JUMP_SLOT
+                    break;
+                case 8:  // R_[X86_64|386]_RELATIVE
+                    break;
+                default:
+                    DLOPEN_FAIL("write me");  // reread the docs on this one.
+                    break;
+            } // switch
+        } // for
+
+        DLOPEN_FAIL("write me");
+    } // if
+
+    return 1;
+} // fixup_rela
+
+
 static int fixup_relocations(ElfContext *ctx)
 {
+    if (!fixup_rela(ctx))
+        return 0;
+
     DLOPEN_FAIL("write me");
+    return 1;
 } // fixup_relocations
 
 
@@ -523,7 +707,7 @@ fail:
 void *MOJOELF_dlsym(void *lib, const char *sym)
 {
     const ElfHandle *h = (const ElfHandle *) lib;
-    int i;
+    const ElfSymbols *syms;
 
     if (h == NULL)
     {
@@ -531,11 +715,11 @@ void *MOJOELF_dlsym(void *lib, const char *sym)
         return NULL;
     } // if
 
-    // !!! FIXME: can we at least sort these?
-    for (i = 0; i < h->syms_count; i++)
+    // !!! FIXME: can we at least sort these, if not hash them?
+    for (syms = h->syms; syms != NULL; syms = syms->next)
     {
-        if (strcmp(h->syms[i].sym, sym) == 0)
-            return h->syms[i].addr;
+        if (strcmp(syms->sym, sym) == 0)
+            return syms->addr;
     } // for
 
     set_dlerror("Symbol not found");
@@ -546,7 +730,7 @@ void *MOJOELF_dlsym(void *lib, const char *sym)
 void MOJOELF_dlclose(void *lib)
 {
     ElfHandle *h = (ElfHandle *) lib;
-    int i;
+    ElfSymbols *syms = NULL;
 
     if (h == NULL)
         return;
@@ -568,12 +752,14 @@ void MOJOELF_dlclose(void *lib)
     if (h->mmapaddr != MAP_FAILED)
         munmap(h->mmapaddr, h->mmaplen);
 
-    if (h->syms != NULL)
+    syms = h->syms;
+    while (syms != NULL)
     {
-        for (i = 0; i < h->syms_count; i++)
-            free(h->syms[i].sym);
-        free(h->syms);
-    } // if
+        ElfSymbols *next = syms->next;
+        free(syms->sym);
+        free(syms);
+        syms = next;
+    } // while
 
     free(h);
 } // MOJOELF_dlclose
