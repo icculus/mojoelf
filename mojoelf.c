@@ -103,6 +103,7 @@ typedef uintptr_t uintptr;
     #error Please define your platform.
 #endif
 
+#define ELF_ST_BIND(i) ((i) >> 4)
 
 #if !MOJOELF_SUPPORT_DLERROR
     #define set_dlerror(x) do {} while (0)
@@ -679,8 +680,11 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 
         printf("Resolved '%s' to %p ...\n", symstr, addr);
 
-//        if (addr == NULL)
-//            DLOPEN_FAIL("Couldn't resolve symbol");
+        if (addr == NULL)
+        {
+            if (ELF_ST_BIND(symbol->st_info) != 2)  // STB_WEAK
+                DLOPEN_FAIL("Couldn't resolve symbol");
+        } // if
     } // if
 
     else  // This is a symbol we export, add it to our list.
