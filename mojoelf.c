@@ -277,6 +277,90 @@ typedef struct ElfHandle  // this is what MOJOELF_dlopen_*() returns.
 
 // Actual shared object loading happens here.
 
+static inline int Strcmp(const char *_a, const char *_b)
+{
+#if 0
+    return strcmp(_a, _b);
+#else
+    while (*_a)
+    {
+        const char a = *(_a++);
+        const char b = *(_b++);
+        if (a < b)
+            return -1;
+        else if (a > b)
+            return -1;
+        else if (a == 0)
+            return 0;
+    } // while
+    return 0;
+#endif
+} // Strcmp
+
+static inline void Strcpy(char *_a, const char *_b)
+{
+#if 0
+    return strcpy(_a, _b);
+#else
+    while (1)
+    {
+        const char b = *(_b++);
+        *(_a++) = b;
+        if (b == '\0')
+            return;
+    } // while    
+#endif
+} // Strcpy
+
+static inline void Memzero(void *buf, size_t len)
+{
+#if 0
+    memset(buf, '\0', len);
+#else
+    uintptr *ptrnative = (uintptr *) buf;
+    uint8 *ptrbyte;
+
+    while (len >= sizeof (uintptr))
+    {
+        *(ptrnative++) = 0;
+        len -= sizeof (uintptr);
+    } // while
+
+    ptrbyte = (uint8 *) ptrnative;
+    while (len--)
+        *(ptrbyte++) = '\0';
+#endif
+} // Memzero
+
+static inline void Memcopy(void *dst, const void *src, size_t len)
+{
+#if 0
+    memcpy(dst, src, len);
+#else
+    uintptr *dptrnative = (uintptr *) dst;
+    const uintptr *sptrnative = (uintptr *) src;
+    uint8 *dptrbyte;
+    const uint8 *sptrbyte;
+
+    while (len >= sizeof (uintptr))
+    {
+        *dptrnative = *sptrnative;
+        dptrnative++;
+        sptrnative++;
+        len -= sizeof (uintptr);
+    } // while
+
+    dptrbyte = (uint8 *) dptrnative;
+    sptrbyte = (const uint8 *) sptrnative;
+    while (len--)
+    {
+        *dptrbyte = *sptrbyte;
+        dptrbyte++;
+        sptrbyte++;
+    } // while
+#endif
+} // Memzero
+
 static inline void *Malloc(const size_t len)
 {
     void *retval = calloc(1, len);
@@ -284,14 +368,6 @@ static inline void *Malloc(const size_t len)
         set_dlerror("Out of memory");
     return retval;
 } // Malloc
-
-static inline void *Realloc(void *ptr, const size_t len)
-{
-    void *retval = realloc(ptr, len);
-    if (retval == NULL)
-        set_dlerror("Out of memory");
-    return retval;
-} // Realloc
 
 typedef struct ElfDynTable
 {
@@ -497,7 +573,7 @@ static int map_pages(ElfContext *ctx)
     if (mmapaddr == ((void *) MAP_FAILED))
         DLOPEN_FAIL("mmap failed");
 
-    memset(mmapaddr, '\0', mmaplen);
+    Memzero(mmapaddr, mmaplen);
     ctx->retval->mmapaddr = mmapaddr;
     ctx->retval->mmaplen = mmaplen;
 
@@ -511,7 +587,7 @@ static int map_pages(ElfContext *ctx)
             const int prot = ((program->p_flags & 1) ? PROT_EXEC : 0)  |
                              ((program->p_flags & 2) ? PROT_WRITE : 0) |
                              ((program->p_flags & 4) ? PROT_READ : 0)  ;
-            memcpy(ptr, ctx->buf + program->p_offset, program->p_filesz);
+            Memcopy(ptr, ctx->buf + program->p_offset, program->p_filesz);
             if ((prot != mmapprot) && (mprotect(ptr, len, prot) == -1))
                 DLOPEN_FAIL("mprotect failed");
         } // if
@@ -884,20 +960,14 @@ static int add_exported_symbol(ElfContext *ctx, const char *sym, void *addr)
     // !!! FIXME: We should really use a hash table for all this.
     const int syms_count = ctx->retval->syms_count;
     ElfSymbols *syms = ctx->retval->syms;
-    void *ptr;
 
     // We don't check for duplicates here. You get the first one in the list!
-
-    ptr = Realloc(syms, (syms_count + 1) * sizeof (ElfSymbols));
-    if (ptr == NULL)
-        return 0;
-    syms = ctx->retval->syms = (ElfSymbols *) ptr;
 
     syms[syms_count].sym = (char *) Malloc(strlen(sym) + 1);
     if (syms[syms_count].sym == NULL)
         return 0;
 
-    strcpy(syms[syms_count].sym, sym);
+    Strcpy(syms[syms_count].sym, sym);
     syms[syms_count].addr = addr;
     ctx->retval->syms_count++;
 
@@ -908,6 +978,7 @@ static int add_exported_symbol(ElfContext *ctx, const char *sym, void *addr)
 static int build_export_list(ElfContext *ctx)
 {
     const ElfSymTable *symbol = ctx->symtab;
+    int symcount = 0;
     int i;
 
     for (i = 1; i < ctx->symtabcount; i++, symbol++)
@@ -928,9 +999,32 @@ static int build_export_list(ElfContext *ctx)
             (addr != ctx->init) &&
             (addr != ctx->retval->fini))
         {
+            symcount++;
+        } // if
+    } // for
+
+    if (symcount == 0)
+        return 1;  // nothing to do!
+
+    ctx->retval->syms = (ElfSymbols *) Malloc(sizeof (ElfSymbols) * symcount);
+    if (ctx->retval->syms == NULL)
+        return 0;
+
+    for (i = 1; i < ctx->symtabcount; i++, symbol++)
+    {
+        void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
+        const char *symstr = ctx->strtab + symbol->st_name;
+
+        if ((*symstr != '\0') && 
+            (symbol->st_shndx != SHN_UNDEF) &&
+            (symbol->st_shndx != SHN_ABS) &&
+            (addr != ctx->init) &&
+            (addr != ctx->retval->fini))
+        {
             dbgprintf(("Exporting '%s' as '%p' ...\n", symstr, addr));
             if (!add_exported_symbol(ctx, symstr, addr))
                 return 0;
+            symcount++;
         } // if
     } // for
 
@@ -959,7 +1053,7 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
     assert(sizeof (ElfProgram) == MOJOELF_SIZEOF_PROGRAM_HEADER);
     assert(sizeof (ElfSection) == MOJOELF_SIZEOF_SECTION_HEADER);
 
-    memset(&ctx, '\0', sizeof (ElfContext));
+    Memzero(&ctx, sizeof (ElfContext));
     ctx.buf = (const uint8 *) buf;
     ctx.buflen = (size_t) buflen;
     ctx.resolver = resolver ? resolver : noop_resolver;
@@ -1004,7 +1098,7 @@ void *MOJOELF_dlsym(void *lib, const char *sym)
     // !!! FIXME: can we hash these?
     for (i = 0; i < h->syms_count; i++)
     {
-        if (strcmp(h->syms[i].sym, sym) == 0)
+        if (Strcmp(h->syms[i].sym, sym) == 0)
             return h->syms[i].addr;
     } // for
 
