@@ -132,6 +132,7 @@ typedef uintptr_t uintptr;
 #define DT_RELA 7
 #define DT_RELASZ 8
 #define DT_RELAENT 9
+#define DT_RPATH 15
 #define DT_REL 17
 #define DT_RELSZ 18
 #define DT_RELENT 19
@@ -431,6 +432,7 @@ static int process_section_headers(ElfContext *ctx)
     const size_t offset = (size_t) ctx->header->e_shoff;
     const ElfSection *section = (const ElfSection *) (ctx->buf + offset);
     const int header_count = (int) ctx->header->e_shnum;
+    const ElfDynTable *dt = ctx->dyntabs[DT_SYMTAB];
     int saw_dynsym = 0;
     int i;
 
@@ -441,7 +443,6 @@ static int process_section_headers(ElfContext *ctx)
 
         if (section->sh_type == SHT_DYNSYM)
         {
-            const ElfDynTable *dt = ctx->dyntabs[DT_SYMTAB];
             if (dt == NULL)
                 DLOPEN_FAIL("Dynamic symbol table section, but not program");
             else if (dt->d_un.d_ptr != section->sh_offset)
@@ -457,7 +458,7 @@ static int process_section_headers(ElfContext *ctx)
         } // if
     } // for
 
-    if ((!saw_dynsym) && (ctx->dyntabs[6] != NULL))
+    if ((!saw_dynsym) && (dt != NULL))
         DLOPEN_FAIL("Missing dynamic symbol table section");
 
     return 1;
@@ -665,7 +666,7 @@ static int load_external_dependencies(ElfContext *ctx)
         return 1;  // nothing to do.
 
     // !!! FIXME: We currently can't give accurate results if there's an rpath.
-    if (ctx->dyntabs[15] != NULL)  // DT_RPATH
+    if (ctx->dyntabs[DT_RPATH] != NULL)
         DLOPEN_FAIL("DT_RPATH isn't supported at the moment");
 
     ctx->retval->dlopens_count = 0;
