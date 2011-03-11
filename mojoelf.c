@@ -266,6 +266,7 @@ typedef struct ElfContext
     const char *strtab;  // string table for dynamic symbols.
     size_t strtablen;  // length in bytes of dynamic symbol string table.
     const ElfSymTable *symtab;  // the symbol table.
+    int symtabcount;  // entries in the symbol table.
     const ElfDynTable *dyntabs[32];  // indexable pointers to dynamic tables.
 } ElfContext;
 
@@ -310,6 +311,18 @@ static int validate_elf_header(const ElfContext *ctx)
 
     return 1;  // all good!
 } // validate_elf_header
+
+
+static int validate_elf_section(const ElfContext *ctx, const ElfSection *section)
+{
+    if (section->sh_offset + section->sh_size > ctx->buflen)
+        DLOPEN_FAIL("Bogus ELF program offset/size");
+    // we currently ignore the string table in validate_elf_header, so we
+    //  can't verify this string.
+    //else if ((maxstr > 0) && (sect->sh_name > maxstr))
+    //    DLOPEN_FAIL("Bogus ELF section name index");
+    return 1;
+} // validate_elf_section
 
 
 static int validate_elf_program(const ElfContext *ctx, const ElfProgram *prog)
@@ -369,6 +382,43 @@ static int process_program_headers(ElfContext *ctx)
 
     return 1;
 } // process_program_headers
+
+
+static int process_section_headers(ElfContext *ctx)
+{
+    const size_t offset = (size_t) ctx->header->e_shoff;
+    const ElfSection *section = (const ElfSection *) (ctx->buf + offset);
+    const int header_count = (int) ctx->header->e_shnum;
+    int saw_dynsym = 0;
+    int i;
+
+    for (i = 0; i < header_count; i++, section++)
+    {
+        if (!validate_elf_section(ctx, section))
+            return 0;
+
+        if (section->sh_type == 11)  // SHT_DYNSYM
+        {
+            saw_dynsym = 1;
+            if (ctx->dyntabs[6] == NULL)
+                DLOPEN_FAIL("Dynamic symbol table section, but not program");
+            else if (ctx->dyntabs[6]->d_un.d_ptr != section->sh_offset)
+                DLOPEN_FAIL("Dynamic symbol table program/section mismatch");
+            else if (ctx->dyntabs[6]->d_un.d_ptr != section->sh_offset)
+                DLOPEN_FAIL("Dynamic symbol table program/section mismatch");
+            else if (section->sh_entsize != MOJOELF_SIZEOF_SYMENT)
+                DLOPEN_FAIL("Bogus dynamic symbol table section entsize");
+            else if (section->sh_size % MOJOELF_SIZEOF_SYMENT)
+                DLOPEN_FAIL("Bogus dynamic symbol table section size");
+            ctx->symtabcount = section->sh_size / MOJOELF_SIZEOF_SYMENT;
+        } // if
+    } // for
+
+    if ((!saw_dynsym) && (ctx->dyntabs[6] != NULL))
+        DLOPEN_FAIL("Missing dynamic symbol table section");
+
+    return 1;
+} // process_section_headers
 
 
 // Get the ELF programs into memory at the right place and set protections.
@@ -613,48 +663,12 @@ static int load_external_dependencies(ElfContext *ctx)
 } // load_external_dependencies
 
 
-static int add_exported_symbol(ElfContext *ctx, const char *sym, void *addr)
-{
-    // !!! FIXME: We should really use a hash table for all this.
-    const int syms_count = ctx->retval->syms_count;
-    ElfSymbols *syms = ctx->retval->syms;
-    void *ptr;
-    int i;
-
-    for (i = 0; i < syms_count; i++)
-    {
-        if (strcmp(syms[i].sym, sym) == 0)
-        {
-            // !!! FIXME: This failure is possibly our bug, since we don't
-            // !!! FIXME:  parse the symbol table directly.
-            if (addr != syms[i].addr)
-                DLOPEN_FAIL("Exporting symbol twice with different addresses");
-            return 1;  // already added.
-        } // if
-    } // for
-
-    ptr = Realloc(syms, (syms_count + 1) * sizeof (ElfSymbols));
-    if (ptr == NULL)
-        return 0;
-    syms = ctx->retval->syms = (ElfSymbols *) ptr;
-
-    syms[syms_count].sym = (char *) Malloc(strlen(sym) + 1);
-    if (syms[syms_count].sym == NULL)
-        return 0;
-
-    strcpy(syms[syms_count].sym, sym);
-    syms[syms_count].addr = addr;
-    ctx->retval->syms_count++;
-
-    return 1;
-} // add_exported_symbol
-
-
 static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 {
     // !!! FIXME: figure out symbol table count, fail if sym >= to it.
     const ElfSymTable *symbol = ctx->symtab + sym;
     const char *symstr = NULL;
+    // !!! FIXME: verify this.
     void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
 
     if (symbol->st_name >= ctx->strtablen)
@@ -686,12 +700,6 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
                 DLOPEN_FAIL("Couldn't resolve symbol");
         } // if
     } // if
-
-    else  // This is a symbol we export, add it to our list.
-    {
-        printf("Exporting '%s' as '%p' ...\n", symstr, addr);
-        add_exported_symbol(ctx, symstr, (void *) symbol->st_value);
-    } // else
 
     *_addr = (uintptr) addr;
     return 1;
@@ -802,6 +810,7 @@ static inline int fixup_jmprel(ElfContext *ctx)
     return fixup_rel_internal(ctx, dt_jmprel, dt_jmprelsz);
 } // fixup_jmprel
 
+
 static int fixup_relocations(ElfContext *ctx)
 {
     if (!fixup_rela(ctx))
@@ -812,6 +821,71 @@ static int fixup_relocations(ElfContext *ctx)
         return 0;
     return 1;
 } // fixup_relocations
+
+
+static int add_exported_symbol(ElfContext *ctx, const char *sym, void *addr)
+{
+    // !!! FIXME: We should really use a hash table for all this.
+    const int syms_count = ctx->retval->syms_count;
+    ElfSymbols *syms = ctx->retval->syms;
+    void *ptr;
+    int i;
+
+    for (i = 0; i < syms_count; i++)
+    {
+        if (strcmp(syms[i].sym, sym) == 0)
+        {
+            // !!! FIXME: This failure is possibly our bug, since we don't
+            // !!! FIXME:  parse the symbol table directly.
+            if (addr != syms[i].addr)
+                DLOPEN_FAIL("Exporting symbol twice with different addresses");
+            return 1;  // already added.
+        } // if
+    } // for
+
+    ptr = Realloc(syms, (syms_count + 1) * sizeof (ElfSymbols));
+    if (ptr == NULL)
+        return 0;
+    syms = ctx->retval->syms = (ElfSymbols *) ptr;
+
+    syms[syms_count].sym = (char *) Malloc(strlen(sym) + 1);
+    if (syms[syms_count].sym == NULL)
+        return 0;
+
+    strcpy(syms[syms_count].sym, sym);
+    syms[syms_count].addr = addr;
+    ctx->retval->syms_count++;
+
+    return 1;
+} // add_exported_symbol
+
+
+static int build_export_list(ElfContext *ctx)
+{
+    const ElfSymTable *symbol = ctx->symtab;
+    int i;
+
+    for (i = 1; i < ctx->symtabcount; i++, symbol++)
+    {
+        // !!! FIXME: verify this.
+        void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
+        const char *symstr;
+
+        if (symbol->st_name >= ctx->strtablen)
+            DLOPEN_FAIL("Bogus symbol name");
+
+        symstr = ctx->strtab + symbol->st_name;
+
+        if ((*symstr != '\0') && (symbol->st_shndx != 0))  // SHN_UNDEF
+        {
+            printf("Exporting '%s' as '%p' ...\n", symstr, addr);
+            if (!add_exported_symbol(ctx, symstr, addr))
+                return 0;
+        } // if
+    } // for
+
+    return 1;
+} // build_export_list
 
 
 static int call_so_init(ElfContext *ctx)
@@ -847,8 +921,10 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen)
     else if (!process_program_headers(&ctx)) goto fail;
     else if (!map_pages(&ctx)) goto fail;
     else if (!walk_dynamic_table(&ctx)) goto fail;
+    else if (!process_section_headers(&ctx)) goto fail;
     else if (!load_external_dependencies(&ctx)) goto fail;
     else if (!fixup_relocations(&ctx)) goto fail;
+    else if (!build_export_list(&ctx)) goto fail;
     else if (!call_so_init(&ctx)) goto fail;
 
     // we made it!
