@@ -731,10 +731,11 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
     return 1;
 } // do_fixup
 
-static int fixup_rela_internal(ElfContext *ctx, const ElfDynTable *dt_rela)
+static int fixup_rela_internal(ElfContext *ctx, const ElfDynTable *dt_rela,
+                               const ElfDynTable *dt_relasz)
 {
     const size_t offset = (size_t) dt_rela->d_un.d_ptr;
-    const size_t relasz = (size_t) ctx->dyntabs[8]->d_un.d_val;  // DT_RELASZ
+    const size_t relasz = (size_t) dt_relasz->d_un.d_val;
     const size_t count = relasz / MOJOELF_SIZEOF_RELAENT;
     const ElfRelA *rela = (const ElfRelA *) (ctx->buf + offset);
     int i;
@@ -752,15 +753,17 @@ static int fixup_rela_internal(ElfContext *ctx, const ElfDynTable *dt_rela)
 static inline int fixup_rela(ElfContext *ctx)
 {
     const ElfDynTable *dt_rela = ctx->dyntabs[7];  // DT_RELA
+    const ElfDynTable *dt_relasz = ctx->dyntabs[8];  // DT_RELASZ
     if (dt_rela == NULL)  // it's optional, we're done if it's not there.
         return 1;
-    return fixup_rela_internal(ctx, dt_rela);
+    return fixup_rela_internal(ctx, dt_rela, dt_relasz);
 } // fixup_rela
 
-static int fixup_rel_internal(ElfContext *ctx, const ElfDynTable *dt_rel)
+static int fixup_rel_internal(ElfContext *ctx, const ElfDynTable *dt_rel,
+                              const ElfDynTable *dt_relsz)
 {
     const size_t offset = (size_t) dt_rel->d_un.d_ptr;
-    const size_t relsz = (size_t) ctx->dyntabs[18]->d_un.d_val;  // DT_RELSZ
+    const size_t relsz = (size_t) dt_relsz->d_un.d_val;
     const size_t count = relsz / MOJOELF_SIZEOF_RELENT;
     const ElfRelA *rel = (const ElfRelA *) (ctx->buf + offset);
     int i;
@@ -777,23 +780,26 @@ static int fixup_rel_internal(ElfContext *ctx, const ElfDynTable *dt_rel)
 
 static inline int fixup_rel(ElfContext *ctx)
 {
-    const ElfDynTable *dt_rel = ctx->dyntabs[17];  // DT_RELA
+    const ElfDynTable *dt_rel = ctx->dyntabs[17];  // DT_REL
+    const ElfDynTable *dt_relsz = ctx->dyntabs[18];  // DT_RELSZ
     if (dt_rel == NULL)  // it's optional, we're done if it's not there.
         return 1;
-    return fixup_rel_internal(ctx, dt_rel);
+    return fixup_rel_internal(ctx, dt_rel, dt_relsz);
 } // fixup_rel
 
 static inline int fixup_jmprel(ElfContext *ctx)
 {
     const ElfDynTable *dt_jmprel = ctx->dyntabs[23];  // DT_JMPREL
+    const ElfDynTable *dt_jmprelsz = ctx->dyntabs[2];  // DT_PLTRELSZ
+
     if (dt_jmprel == NULL)  // it's optional, we're done if it's not there.
         return 1;
 
     if (ctx->dyntabs[20]->d_un.d_val == 7) // DT_RELA
-        return fixup_rela_internal(ctx, dt_jmprel);
+        return fixup_rela_internal(ctx, dt_jmprel, dt_jmprelsz);
 
     assert(ctx->dyntabs[20]->d_un.d_val == 17); // DT_REL
-    return fixup_rel_internal(ctx, dt_jmprel);
+    return fixup_rel_internal(ctx, dt_jmprel, dt_jmprelsz);
 } // fixup_jmprel
 
 static int fixup_relocations(ElfContext *ctx)
