@@ -29,7 +29,7 @@ const char *MOJOELF_dlerror(void);
 #define MOJOELF_TEST 1   // compiles a main() for a test app.
 #define MOJOELF_SUPPORT_DLERROR 1
 #define MOJOELF_SUPPORT_DLOPEN_FILE 1
-//#define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
+#define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
 
 typedef intptr_t intptr;
 typedef uint8_t uint8;
