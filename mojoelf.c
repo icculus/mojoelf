@@ -976,7 +976,7 @@ static int build_export_list(ElfContext *ctx)
     int symcount = 0;
     int i;
 
-    for (i = 1; i < ctx->symtabcount; i++, symbol++)
+    for (i = 1; i <= ctx->symtabcount; i++, symbol++)
     {
         void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
         const char *symstr;
@@ -1006,7 +1006,7 @@ static int build_export_list(ElfContext *ctx)
         return 0;
 
     symbol = ctx->symtab;
-    for (i = 1; i < ctx->symtabcount; i++, symbol++)
+    for (i = 1; i <= ctx->symtabcount; i++, symbol++)
     {
         void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
         const char *symstr = ctx->strtab + symbol->st_name;
