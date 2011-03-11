@@ -3,7 +3,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
-#include <errno.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -29,6 +28,15 @@
 
 #ifndef MOJOELF_ALLOW_SYSTEM_RESOLVE
 #define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
+#endif
+
+#if MOJOELF_TEST || (MOJOELF_SUPPORT_DLERROR && MOJOELF_SUPPORT_DLOPEN_FILE)
+#include <errno.h>
+#else
+#ifdef errno
+#undef errno
+#endif
+#define errno YOU_NEEDED_TO_INCLUDE_ERRNO_H___BUT_DIDNT
 #endif
 
 #if 1
@@ -110,7 +118,7 @@ typedef uintptr_t uintptr;
 #endif
 
 
-#if !MOJOELF_SUPPORT_DLERROR
+#if !MOJOELF_SUPPORT_DLERROR && !MOJOELF_TEST
     #define set_dlerror(x) do {} while (0)
 #else
     static const char *dlerror_msg = NULL;
