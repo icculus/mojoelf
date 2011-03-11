@@ -2,3 +2,4 @@ syntax:glob
 hello.so
 test
 mojoelf
+testsdl
