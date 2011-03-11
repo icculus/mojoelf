@@ -960,17 +960,31 @@ void *MOJOELF_dlopen_file(const char *fname)
 #if MOJOELF_TEST
 int main(int argc, char **argv)
 {
+    int (*hello)(const char *str) = NULL;
     void *lib = NULL;
     int i;
+
     for (i = 1; i < argc; i++)
     {
+        printf("opening '%s'...\n", argv[i]);
         lib = MOJOELF_dlopen_file(argv[i]);
         if (lib == NULL)
             printf("failed '%s'! (%s)\n", argv[i], MOJOELF_dlerror());
         else
         {
             printf("loaded '%s'!\n", argv[i]);
+            hello = MOJOELF_dlsym(lib, "hello");
+            if (hello == NULL)
+                printf("Couldn't find a 'hello' function in '%s'.\n", argv[i]);
+            else
+            {
+                printf("Found 'hello' function at %p. Calling...\n", hello);
+                hello("world");
+                printf("...back from function call!\n");
+            } // else
+            printf("closing '%s'...\n", argv[i]);
             MOJOELF_dlclose(lib);
+            printf("closed '%s'!\n", argv[i]);
         } // else
     } // for
 
