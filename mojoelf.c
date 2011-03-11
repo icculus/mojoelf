@@ -763,14 +763,14 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
         // There are way more than these, but these seem to be the
         //  only ones average libraries use.
         // Note libc.so.6 itself also seems to use: R_*_64, R_*_TPOFF64
-        case R_GLOB_DATA
-        case R_JUMP_SLOT
+        case R_GLOB_DATA:
+        case R_JUMP_SLOT:
             *fixup = addr;
             break;
-        case R_RELATIVE
+        case R_RELATIVE:
             *fixup = (uintptr) (addr + r_addend);
             break;
-        case R_NONE
+        case R_NONE:
             break;  // do nothing.
         default:
             DLOPEN_FAIL("write me");  // haven't seen this yet.
