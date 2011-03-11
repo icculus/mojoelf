@@ -103,7 +103,6 @@ typedef uintptr_t uintptr;
     #error Please define your platform.
 #endif
 
-#define ELF_ST_BIND(i) ((i) >> 4)
 
 #if !MOJOELF_SUPPORT_DLERROR
     #define set_dlerror(x) do {} while (0)
@@ -118,6 +117,47 @@ typedef uintptr_t uintptr;
         return retval;
     } // MOJOELF_dlerror
 #endif
+
+// The usual ELF defines from the spec...
+#define ELF_ST_BIND(i) ((i) >> 4)
+#define ET_DYN 3
+#define PT_LOAD 1
+#define PT_DYNAMIC 2
+#define DT_NULL 0
+#define DT_NEEDED 1
+#define DT_STRTAB 5
+#define DT_STRSZ 10
+#define DT_SYMTAB 6
+#define DT_SYMENT 11
+#define DT_RELA 7
+#define DT_RELASZ 8
+#define DT_RELAENT 9
+#define DT_REL 17
+#define DT_RELSZ 18
+#define DT_RELENT 19
+#define DT_JMPREL 23
+#define DT_PLTREL 20
+#define DT_PLTRELSZ 2
+#define DT_INIT 12
+#define DT_FINI 13
+#define DT_INIT_ARRAY 25
+#define DT_INIT_ARRAYSZ 27
+#define DT_FINI_ARRAY 25
+#define DT_FINI_ARRAYSZ 28
+#define SHN_UNDEF 0
+#define SHN_ABS 0xFFF1
+#define STB_WEAK 2
+#define EI_CLASS 4
+#define EI_DATA 5
+#define EI_VERSION 6
+#define EI_OSABI 7
+#define EI_OSABIVER 8
+
+// Warning: These may change for other architectures!
+#define R_NONE 0
+#define R_GLOB_DATA 6
+#define R_JUMP_SLOT 7
+#define R_RELATIVE 8
 
 typedef struct ElfHeader
 {
@@ -204,7 +244,7 @@ typedef struct ElfSymbols
     void *addr;
 } ElfSymbols;
 
-typedef struct ElfHandle  // this is what MOJOELF_dlopen_mem() returns.
+typedef struct ElfHandle  // this is what MOJOELF_dlopen_*() returns.
 {
     int mmaps_count;
     void *mmapaddr;
@@ -280,17 +320,17 @@ static int validate_elf_header(const ElfContext *ctx)
         DLOPEN_FAIL("Not enough data");
     else if ((buf[0]!=0x7F) || (buf[1]!='E') || (buf[2]!='L') || (buf[3]!='F'))
         DLOPEN_FAIL("Not an ELF file");
-    else if (buf[4] != MOJOELF_ELFCLASS)
+    else if (buf[EI_CLASS] != MOJOELF_ELFCLASS)
         DLOPEN_FAIL("Unsupported/bogus ELF class");
-    else if (buf[5] != MOJOELF_ELFDATA)
+    else if (buf[EI_DATA] != MOJOELF_ELFDATA)
         DLOPEN_FAIL("Unsupported/bogus ELF data ordering");
-    else if (buf[6] != 1)
+    else if (buf[EI_VERSION] != 1)
         DLOPEN_FAIL("Unsupported/bogus ELF file version");
-    else if (buf[7] != MOJOELF_OSABI)
+    else if (buf[EI_OSABI] != MOJOELF_OSABI)
         DLOPEN_FAIL("Unsupported/bogus ELF OSABI");
-    else if (buf[8] != MOJOELF_OSABIVERSION)
+    else if (buf[EI_OSABIVER] != MOJOELF_OSABIVERSION)
         DLOPEN_FAIL("Unsupported/bogus ELF OSABI");
-    else if (hdr->e_type != 3)  // ET_DYN (.so files)
+    else if (hdr->e_type != ET_DYN)  // (.so files)
         DLOPEN_FAIL("Unsupported/bogus ELF object type");
     else if (hdr->e_machine != MOJOELF_MACHINE_TYPE)
         DLOPEN_FAIL("Unsupported/bogus ELF machine type");
@@ -350,7 +390,7 @@ static int process_program_headers(ElfContext *ctx)
         if (!validate_elf_program(ctx, program))
             return 0;
 
-        else if ((program->p_type == 1) && (program->p_memsz > 0))  // PT_LOAD
+        else if ((program->p_type == PT_LOAD) && (program->p_memsz > 0))
         {
             const size_t endaddr = program->p_vaddr + program->p_memsz;
             if (endaddr > ctx->mmaplen)
@@ -360,7 +400,7 @@ static int process_program_headers(ElfContext *ctx)
         } // else if
 
         // When we see this header, take note for later.
-        else if (program->p_type == 2)  // PT_DYNAMIC
+        else if (program->p_type == PT_DYNAMIC)
         {
             const uint8 *buf = (const uint8 *) ctx->header;
             if (ctx->dyntab != NULL)  // Can there be more than one of these?!
@@ -446,7 +486,7 @@ static int map_pages(ElfContext *ctx)
     // Put the program blocks at the correct relative positions.
     for (i = 0; i < header_count; i++, program++)
     {
-        if ((program->p_type == 1) && (program->p_memsz > 0))  // PT_LOAD
+        if ((program->p_type == PT_LOAD) && (program->p_memsz > 0))
         {
             uint8 *ptr = ((uint8 *) mmapaddr) + (program->p_vaddr - ctx->base);
             const size_t len = (const size_t) program->p_memsz;
@@ -467,6 +507,7 @@ static int walk_dynamic_table(ElfContext *ctx)
 {
     // preliminary walkthrough of the dynamic table.
     const ElfDynTable *dyntab = ctx->dyntab;
+    const ElfDynTable **dyntabs = ctx->dyntabs;
     const int dyntabcount = ctx->dyntabcount;
     uint8 *mmapaddr = (uint8 *) ctx->retval->mmapaddr;
     int i;
@@ -475,9 +516,9 @@ static int walk_dynamic_table(ElfContext *ctx)
     {
         const int tag = (int) dyntab->d_tag;
 
-        if (tag == 0)  // DT_NULL
+        if (tag == DT_NULL)
             continue;
-        else if (tag == 1)  // DT_NEEDED
+        else if (tag == DT_NEEDED)
         {
             ctx->retval->dlopens_count++;
             continue;
@@ -485,9 +526,9 @@ static int walk_dynamic_table(ElfContext *ctx)
 
         if (tag < (sizeof (ctx->dyntabs) / sizeof (ctx->dyntabs[0])))
         {
-            if (ctx->dyntabs[tag] != NULL)
+            if (dyntabs[tag] != NULL)
                 DLOPEN_FAIL("Illegal duplicate dynamic tables");
-            ctx->dyntabs[tag] = dyntab;
+            dyntabs[tag] = dyntab;
         } // if
     } // for
 
@@ -495,84 +536,83 @@ static int walk_dynamic_table(ElfContext *ctx)
     //  dupes or missing fields, or ordering issues.
     // Now that we've shuffled this stuff into an index, process it.
 
-    if (ctx->dyntabs[5] == NULL)  // DT_STRTAB
+    if (dyntabs[DT_STRTAB] == NULL)
         DLOPEN_FAIL("No DT_STRTAB table");
-    else if (ctx->dyntabs[10] == NULL)  // DT_STRSZ
+    else if (dyntabs[DT_STRSZ] == NULL)
         DLOPEN_FAIL("No DT_STRSZ table");
-    else if (ctx->dyntabs[6] == NULL)  // DT_SYMTAB
+    else if (dyntabs[DT_SYMTAB] == NULL)
         DLOPEN_FAIL("No DT_SYMTAB table");
-    else if (ctx->dyntabs[11] == NULL)  // DT_SYMENT
+    else if (dyntabs[DT_SYMENT] == NULL)
         DLOPEN_FAIL("No DT_SYMENT table");
-    else if (ctx->dyntabs[11]->d_un.d_val != MOJOELF_SIZEOF_SYMENT) // DT_SYMENT
+    else if (dyntabs[DT_SYMENT]->d_un.d_val != MOJOELF_SIZEOF_SYMENT)
         DLOPEN_FAIL("Bogus DT_SYMENT value");
 
     // !!! FIXME: is there a size of the symbol table without parsing
     // !!! FIXME:  the section headers?
-    if (ctx->dyntabs[6]->d_un.d_ptr >= ctx->buflen)  // DT_SYMTAB
+    if (dyntabs[DT_SYMTAB]->d_un.d_ptr >= ctx->buflen)
         DLOPEN_FAIL("Bogus DT_SYMTAB offset");
-    ctx->symtab = (const ElfSymTable *) (ctx->buf+ctx->dyntabs[6]->d_un.d_ptr);
 
-    if (ctx->dyntabs[7])  // DT_RELA
+    ctx->symtab = (const ElfSymTable *)
+                    (ctx->buf + dyntabs[DT_SYMTAB]->d_un.d_ptr);
+
+    if (dyntabs[DT_RELA])
     {
-        if (ctx->dyntabs[8] == NULL)  // DT_RELASZ
+        if (dyntabs[DT_RELASZ] == NULL)
             DLOPEN_FAIL("No DT_RELASZ table");
-        else if (ctx->dyntabs[9] == NULL)  // DT_RELAENT
+        else if (dyntabs[DT_RELAENT] == NULL)
             DLOPEN_FAIL("No DT_RELAENT table");
-        else if (ctx->dyntabs[9]->d_un.d_val != MOJOELF_SIZEOF_RELAENT)
+        else if (dyntabs[DT_RELAENT]->d_un.d_val != MOJOELF_SIZEOF_RELAENT)
             DLOPEN_FAIL("Unsupported/bogus DT_RELAENT value");
-        else if (ctx->dyntabs[8]->d_un.d_val % MOJOELF_SIZEOF_RELAENT)
+        else if (dyntabs[DT_RELASZ]->d_un.d_val % MOJOELF_SIZEOF_RELAENT)
             DLOPEN_FAIL("Bogus DT_RELASZ value");
-        else if (ctx->dyntabs[7]->d_un.d_ptr +
-                 ctx->dyntabs[8]->d_un.d_val >= ctx->buflen)
+        else if (dyntabs[DT_RELA]->d_un.d_ptr +
+                 dyntabs[DT_RELASZ]->d_un.d_val >= ctx->buflen)
             DLOPEN_FAIL("Bogus DT_RELA value");
     } // if
 
-    if (ctx->dyntabs[17])  // DT_REL
+    if (dyntabs[DT_REL])
     {
-        if (ctx->dyntabs[18] == NULL)  // DT_RELSZ
+        if (dyntabs[DT_RELSZ] == NULL)
             DLOPEN_FAIL("No DT_RELSZ table");
-        else if (ctx->dyntabs[19] == NULL)  // DT_RELENT
+        else if (dyntabs[DT_RELENT] == NULL)
             DLOPEN_FAIL("No DT_RELENT table");
-        else if (ctx->dyntabs[19]->d_un.d_val != MOJOELF_SIZEOF_RELENT)
+        else if (dyntabs[DT_RELENT]->d_un.d_val != MOJOELF_SIZEOF_RELENT)
             DLOPEN_FAIL("Unsupported/bogus DT_RELENT value");
-        else if (ctx->dyntabs[18]->d_un.d_val % MOJOELF_SIZEOF_RELENT)
+        else if (dyntabs[DT_RELSZ]->d_un.d_val % MOJOELF_SIZEOF_RELENT)
             DLOPEN_FAIL("Bogus DT_RELSZ value");
-        else if (ctx->dyntabs[17]->d_un.d_ptr +
-                 ctx->dyntabs[18]->d_un.d_val >= ctx->buflen)
+        else if (dyntabs[DT_REL]->d_un.d_ptr +
+                 dyntabs[DT_RELSZ]->d_un.d_val >= ctx->buflen)
             DLOPEN_FAIL("Bogus DT_REL value");
     } // if
 
-    if (ctx->dyntabs[23])  // DT_JMPREL
+    if (dyntabs[DT_JMPREL])
     {
-        if (ctx->dyntabs[20] == NULL)  // DT_PLTREL
+        if (dyntabs[DT_PLTREL] == NULL)
             DLOPEN_FAIL("No DT_PLTREL table");
-        else if (ctx->dyntabs[2] == NULL)  // DT_PLTRELSZ
+        else if (dyntabs[DT_PLTRELSZ] == NULL)
             DLOPEN_FAIL("No DT_PLTRELSZ table");
+        else if (dyntabs[DT_JMPREL]->d_un.d_ptr +
+                 dyntabs[DT_PLTRELSZ]->d_un.d_val >= ctx->buflen)
+            DLOPEN_FAIL("Bogus DT_PLTREL value");
 
-        if (ctx->dyntabs[20]->d_un.d_val == 17)  // DT_PLTREL -> DT_REL
+        if (dyntabs[DT_PLTREL]->d_un.d_val == DT_REL)
         {
-            if (ctx->dyntabs[19] == NULL)  // DT_RELENT
+            if (dyntabs[DT_RELENT] == NULL)  // DT_RELENT
                 DLOPEN_FAIL("No DT_RELENT table");
-            else if (ctx->dyntabs[19]->d_un.d_val != MOJOELF_SIZEOF_RELENT)
+            else if (dyntabs[DT_RELENT]->d_un.d_val != MOJOELF_SIZEOF_RELENT)
                 DLOPEN_FAIL("Unsupported/bogus DT_RELENT value");
-            else if (ctx->dyntabs[2]->d_un.d_val % MOJOELF_SIZEOF_RELENT)
+            else if (dyntabs[DT_PLTRELSZ]->d_un.d_val % MOJOELF_SIZEOF_RELENT)
                 DLOPEN_FAIL("Bogus DT_PLTRELSZ value");
-            else if (ctx->dyntabs[17]->d_un.d_ptr +
-                     ctx->dyntabs[18]->d_un.d_val >= ctx->buflen)
-                DLOPEN_FAIL("Bogus DT_PLTREL value");
         } // if
 
-        else if (ctx->dyntabs[20]->d_un.d_val == 7)  // DT_PLTREL -> DT_RELA
+        else if (dyntabs[DT_PLTREL]->d_un.d_val == DT_RELA)
         {
-            if (ctx->dyntabs[9] == NULL)  // DT_RELAENT
+            if (dyntabs[DT_RELAENT] == NULL)  // DT_RELAENT
                 DLOPEN_FAIL("No DT_RELAENT table");
-            else if (ctx->dyntabs[9]->d_un.d_val != MOJOELF_SIZEOF_RELAENT)
+            else if (dyntabs[DT_RELAENT]->d_un.d_val != MOJOELF_SIZEOF_RELAENT)
                 DLOPEN_FAIL("Unsupported/bogus DT_RELAENT value");
-            else if (ctx->dyntabs[2]->d_un.d_val % MOJOELF_SIZEOF_RELAENT)
+            else if (dyntabs[DT_PLTRELSZ]->d_un.d_val % MOJOELF_SIZEOF_RELAENT)
                 DLOPEN_FAIL("Bogus DT_PLTRELSZ value");
-            else if (ctx->dyntabs[7]->d_un.d_ptr +
-                     ctx->dyntabs[8]->d_un.d_val >= ctx->buflen)
-                DLOPEN_FAIL("Bogus DT_PLTREL value");
         } // else if
 
         else
@@ -581,30 +621,29 @@ static int walk_dynamic_table(ElfContext *ctx)
         } // else
     } // if
 
-    ctx->strtablen = (size_t) ctx->dyntabs[10]->d_un.d_val;  // DT_STRSZ
-    ctx->strtab = (const char *) (ctx->buf + ctx->dyntabs[5]->d_un.d_ptr);
+    ctx->strtablen = (size_t) dyntabs[DT_STRSZ]->d_un.d_val;
+    ctx->strtab = (const char *) (ctx->buf + dyntabs[DT_STRTAB]->d_un.d_ptr);
     if (ctx->strtablen == 0)  // technically this is allowed, but oh well.
         DLOPEN_FAIL("Dynamic string table is empty");
-    else if ((ctx->dyntabs[5]->d_un.d_ptr + ctx->strtablen) > ctx->buflen)
+    else if ((dyntabs[DT_STRTAB]->d_un.d_ptr + ctx->strtablen) > ctx->buflen)
         DLOPEN_FAIL("Dynamic string table has bogus offset and/or length");
     else if (ctx->strtab[0] != '\0')
         DLOPEN_FAIL("Dynamic string table doesn't start with null byte");
     else if (ctx->strtab[ctx->strtablen - 1] != '\0')
         DLOPEN_FAIL("Dynamic string table doesn't end with null byte");
 
-    if (ctx->dyntabs[12])  // DT_INIT
-        ctx->init = mmapaddr + (ctx->dyntabs[12]->d_un.d_ptr-ctx->base);
+    if (dyntabs[DT_INIT])
+        ctx->init = mmapaddr + (dyntabs[DT_INIT]->d_un.d_ptr-ctx->base);
 
-    if (ctx->dyntabs[13])  // DT_FINI
-        ctx->retval->fini = mmapaddr + (ctx->dyntabs[13]->d_un.d_ptr-ctx->base);
+    if (dyntabs[DT_FINI])
+        ctx->retval->fini = mmapaddr + (dyntabs[DT_FINI]->d_un.d_ptr-ctx->base);
 
-    if (ctx->dyntabs[25])  // DT_INIT_ARRAY
+    if (dyntabs[DT_INIT_ARRAY])
         DLOPEN_FAIL("write me");
-        //if (ctx->dyntabs[27])  // DT_INIT_ARRAYSZ
-    if (ctx->dyntabs[26])  // DT_FINI_ARRAY
+        //if (dyntabs[DT_INIT_ARRAYSZ])
+    if (dyntabs[DT_FINI_ARRAY])
         DLOPEN_FAIL("write me");
-        //if (ctx->dyntabs[28])  // DT_FINI_ARRAYSZ
-
+        //if (dyntabs[DT_FINI_ARRAYSZ])
 
     return 1;
 } // walk_dynamic_table
@@ -637,7 +676,7 @@ static int load_external_dependencies(ElfContext *ctx)
     // Find the libraries to load.
     for (i = 0; i < dyntabcount; i++, dyntab++)
     {
-        if (dyntab->d_tag == 1)  // DT_NEEDED
+        if (dyntab->d_tag == DT_NEEDED)
         {
             const size_t offset = dyntab->d_un.d_val;
             if (offset >= ctx->strtablen)
@@ -679,7 +718,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     if ((sym == 0) || (*symstr == '\0'))
         /* no-op */;  // we're done already.
 
-    else if (symbol->st_shndx == 0)  // SHN_UNDEF
+    else if (symbol->st_shndx == SHN_UNDEF)
     {
         printf("Resolving '%s' ...\n", symstr);
         addr = NULL;
@@ -699,7 +738,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 
         if (addr == NULL)
         {
-            if (ELF_ST_BIND(symbol->st_info) != 2)  // STB_WEAK
+            if (ELF_ST_BIND(symbol->st_info) != STB_WEAK)
                 DLOPEN_FAIL("Couldn't resolve symbol");
         } // if
     } // if
@@ -707,6 +746,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     *_addr = (uintptr) addr;
     return 1;
 } // resolve_sym
+
 
 static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
                     const uintptr r_offset, const intptr r_addend)
@@ -723,17 +763,15 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
         // There are way more than these, but these seem to be the
         //  only ones average libraries use.
         // Note libc.so.6 itself also seems to use: R_*_64, R_*_TPOFF64
-        case 6:  // R_[X86_64|386]_GLOB_DATA
-        case 7:  // R_[X86_64|386]_JUMP_SLOT
+        case R_GLOB_DATA
+        case R_JUMP_SLOT
             *fixup = addr;
             break;
-        case 8:  // R_[X86_64|386]_RELATIVE
+        case R_RELATIVE
             *fixup = (uintptr) (addr + r_addend);
             break;
-
-        case 0:  // R_[X86_64|386]_NONE
+        case R_NONE
             break;  // do nothing.
-
         default:
             DLOPEN_FAIL("write me");  // haven't seen this yet.
             break;
@@ -763,8 +801,8 @@ static int fixup_rela_internal(ElfContext *ctx, const ElfDynTable *dt_rela,
 
 static inline int fixup_rela(ElfContext *ctx)
 {
-    const ElfDynTable *dt_rela = ctx->dyntabs[7];  // DT_RELA
-    const ElfDynTable *dt_relasz = ctx->dyntabs[8];  // DT_RELASZ
+    const ElfDynTable *dt_rela = ctx->dyntabs[DT_RELA];
+    const ElfDynTable *dt_relasz = ctx->dyntabs[DT_RELASZ];
     if (dt_rela == NULL)  // it's optional, we're done if it's not there.
         return 1;
     return fixup_rela_internal(ctx, dt_rela, dt_relasz);
@@ -791,8 +829,8 @@ static int fixup_rel_internal(ElfContext *ctx, const ElfDynTable *dt_rel,
 
 static inline int fixup_rel(ElfContext *ctx)
 {
-    const ElfDynTable *dt_rel = ctx->dyntabs[17];  // DT_REL
-    const ElfDynTable *dt_relsz = ctx->dyntabs[18];  // DT_RELSZ
+    const ElfDynTable *dt_rel = ctx->dyntabs[DT_REL];
+    const ElfDynTable *dt_relsz = ctx->dyntabs[DT_RELSZ];
     if (dt_rel == NULL)  // it's optional, we're done if it's not there.
         return 1;
     return fixup_rel_internal(ctx, dt_rel, dt_relsz);
@@ -800,19 +838,18 @@ static inline int fixup_rel(ElfContext *ctx)
 
 static inline int fixup_jmprel(ElfContext *ctx)
 {
-    const ElfDynTable *dt_jmprel = ctx->dyntabs[23];  // DT_JMPREL
-    const ElfDynTable *dt_jmprelsz = ctx->dyntabs[2];  // DT_PLTRELSZ
+    const ElfDynTable *dt_jmprel = ctx->dyntabs[DT_JMPREL];
+    const ElfDynTable *dt_jmprelsz = ctx->dyntabs[DT_PLTRELSZ];
 
     if (dt_jmprel == NULL)  // it's optional, we're done if it's not there.
         return 1;
 
-    if (ctx->dyntabs[20]->d_un.d_val == 7) // DT_RELA
+    if (ctx->dyntabs[DT_PLTREL]->d_un.d_val == DT_RELA)
         return fixup_rela_internal(ctx, dt_jmprel, dt_jmprelsz);
 
-    assert(ctx->dyntabs[20]->d_un.d_val == 17); // DT_REL
+    assert(ctx->dyntabs[DT_PLTREL]->d_un.d_val == DT_REL);
     return fixup_rel_internal(ctx, dt_jmprel, dt_jmprelsz);
 } // fixup_jmprel
-
 
 static int fixup_relocations(ElfContext *ctx)
 {
@@ -824,7 +861,6 @@ static int fixup_relocations(ElfContext *ctx)
         return 0;
     return 1;
 } // fixup_relocations
-
 
 static int add_exported_symbol(ElfContext *ctx, const char *sym, void *addr)
 {
@@ -880,8 +916,8 @@ static int build_export_list(ElfContext *ctx)
         symstr = ctx->strtab + symbol->st_name;
 
         if ((*symstr != '\0') && 
-            (symbol->st_shndx != 0) &&  // SHN_UNDEF
-            (symbol->st_shndx != 0xfff1) &&  // SHN_ABS
+            (symbol->st_shndx != SHN_UNDEF) &&
+            (symbol->st_shndx != SHN_ABS) &&
             (addr != ctx->init) &&
             (addr != ctx->retval->fini))
         {
