@@ -11,25 +11,25 @@
 #include <sys/mman.h>
 #include <dlfcn.h>
 
+#include "mojoelf.h"
+
 // ELF specifications: http://refspecs.freestandards.org/elf/
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-void *MOJOELF_dlopen_mem(const void *buf, const long buflen);
-void *MOJOELF_dlopen_file(const char *fname);
-void *MOJOELF_dlsym(void *lib, const char *sym);
-void MOJOELF_dlclose(void *lib);
-const char *MOJOELF_dlerror(void);
-#ifdef __cplusplus
-}
-#endif
-
-
+#ifndef MOJOELF_TEST
 #define MOJOELF_TEST 1   // compiles a main() for a test app.
+#endif
+
+#ifndef MOJOELF_SUPPORT_DLERROR
 #define MOJOELF_SUPPORT_DLERROR 1
+#endif
+
+#ifndef MOJOELF_SUPPORT_DLOPEN_FILE
 #define MOJOELF_SUPPORT_DLOPEN_FILE 1
+#endif
+
+#ifndef MOJOELF_ALLOW_SYSTEM_RESOLVE
 #define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
+#endif
 
 typedef intptr_t intptr;
 typedef uint8_t uint8;
