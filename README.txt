@@ -4,7 +4,6 @@ To use this nonsense:
 
 - Add mojoelf.c to your build.
 - Compile with these #defines, or change the top of mojoelf.c:
-    MOJOELF_TEST 0  // turn off the test program (adds a main() to mojoelf.c).
     MOJOELF_SUPPORT_DLERROR 0  // remove MOJOELF_dlerror() + lots of strings.
     MOJOELF_SUPPORT_DLOPEN_FILE 0 // remove MOJOELF_dlopen_file()
     MOJOELF_ALLOW_SYSTEM_RESOLVE 0  // don't use dlopen()/dlsym() internally.

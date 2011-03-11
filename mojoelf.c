@@ -14,10 +14,6 @@
 
 // ELF specifications: http://refspecs.freestandards.org/elf/
 
-#ifndef MOJOELF_TEST
-#define MOJOELF_TEST 0   // don't compile a main() for a test app.
-#endif
-
 #ifndef MOJOELF_SUPPORT_DLERROR
 #define MOJOELF_SUPPORT_DLERROR 1
 #endif
@@ -34,7 +30,7 @@
 #define MOJOELF_REDUCE_LIBC_DEPENDENCIES 0
 #endif
 
-#if MOJOELF_TEST || (MOJOELF_SUPPORT_DLERROR && MOJOELF_SUPPORT_DLOPEN_FILE)
+#if (MOJOELF_SUPPORT_DLERROR && MOJOELF_SUPPORT_DLOPEN_FILE)
 #include <errno.h>
 #else
 #ifdef errno
@@ -122,7 +118,7 @@ typedef uintptr_t uintptr;
 #endif
 
 
-#if !MOJOELF_SUPPORT_DLERROR && !MOJOELF_TEST
+#if !MOJOELF_SUPPORT_DLERROR
     #define set_dlerror(x) do {} while (0)
 #else
     static const char *dlerror_msg = NULL;
@@ -1144,7 +1140,7 @@ void MOJOELF_dlclose(void *lib)
 } // MOJOELF_dlclose
 
 
-#if MOJOELF_SUPPORT_DLOPEN_FILE || MOJOELF_TEST
+#if MOJOELF_SUPPORT_DLOPEN_FILE
 void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver)
 {
     void *retval = NULL;
@@ -1175,60 +1171,6 @@ void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver)
 
     return retval;
 } // MOJOELF_dlopen_file
-#endif
-
-
-#if MOJOELF_TEST
-static const char *test_person(void)
-{
-    static const char *names[] = { "Alice", "Bob", "Carl", "David", "Eve", 0 };
-    static int calls = 0;
-    const char *retval = names[calls++];
-    if (names[calls] == NULL)
-        calls = 0;
-    return retval;
-} // test_person
-
-static void *test_resolver(const char *sym)
-{
-    if (strcmp(sym, "person") == 0)
-        return test_person;
-    return NULL;
-} // test_resolver
-
-int main(int argc, char **argv)
-{
-    int (*hello)(const int people_count) = NULL;
-    void *lib = NULL;
-    int rc;
-    int i;
-
-    for (i = 1; i < argc; i++)
-    {
-        printf("opening '%s'...\n", argv[i]);
-        lib = MOJOELF_dlopen_file(argv[i], test_resolver);
-        if (lib == NULL)
-            printf("failed '%s'! (%s)\n", argv[i], MOJOELF_dlerror());
-        else
-        {
-            printf("loaded '%s'!\n", argv[i]);
-            hello = MOJOELF_dlsym(lib, "hello");
-            if (hello == NULL)
-                printf("Couldn't find a 'hello' function in '%s'.\n", argv[i]);
-            else
-            {
-                printf("Found 'hello' function at %p. Calling...\n", hello);
-                rc = hello(8);
-                printf("...back from function call! (rc==%d)\n", rc);
-            } // else
-            printf("closing '%s'...\n", argv[i]);
-            MOJOELF_dlclose(lib);
-            printf("closed '%s'!\n", argv[i]);
-        } // else
-    } // for
-
-    return 0;
-} // main
 #endif
 
 // end of mojoelf.c ...
