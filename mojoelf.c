@@ -1020,10 +1020,12 @@ static int build_export_list(ElfContext *ctx)
             dbgprintf(("Exporting '%s' as '%p' ...\n", symstr, addr));
             if (!add_exported_symbol(ctx, symstr, addr))
                 return 0;
-            symcount++;
+            else if (ctx->retval->syms_count == symcount)
+                break;  // found them all.
         } // if
     } // for
 
+    assert(ctx->retval->syms_count == symcount);
     return 1;
 } // build_export_list
 
