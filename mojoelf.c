@@ -876,7 +876,11 @@ static int build_export_list(ElfContext *ctx)
 
         symstr = ctx->strtab + symbol->st_name;
 
-        if ((*symstr != '\0') && (symbol->st_shndx != 0))  // SHN_UNDEF
+        if ((*symstr != '\0') && 
+            (symbol->st_shndx != 0) &&  // SHN_UNDEF
+            (symbol->st_shndx != 0xfff1) &&  // SHN_ABS
+            (addr != ctx->init) &&
+            (addr != ctx->retval->fini))
         {
             printf("Exporting '%s' as '%p' ...\n", symstr, addr);
             if (!add_exported_symbol(ctx, symstr, addr))
