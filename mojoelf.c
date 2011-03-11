@@ -309,6 +309,7 @@ typedef struct ElfContext
     const ElfSymTable *symtab;  // the symbol table.
     int symtabcount;  // entries in the symbol table.
     const ElfDynTable *dyntabs[32];  // indexable pointers to dynamic tables.
+    MOJOELF_SymbolCallback resolver;  // resolver callback.
 } ElfContext;
 
 #define DLOPEN_FAIL(err) do { set_dlerror(err); return 0; } while (0)
@@ -720,26 +721,26 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     else if (symbol->st_shndx == SHN_UNDEF)
     {
         printf("Resolving '%s' ...\n", symstr);
-        addr = NULL;
+
+        addr = ctx->resolver(symstr);  // give caller's resolver first shot.
 
         #if MOJOELF_ALLOW_SYSTEM_RESOLVE
+        if (addr == NULL)
         {
             int i;
             addr = dlsym(NULL, symstr);
-            for (i = 0; (addr == NULL) && (i < ctx->retval->dlopens_count); i++)
+            for (i = 0; (!addr) && (i < ctx->retval->dlopens_count); i++)
                 addr = dlsym(ctx->retval->dlopens[i], symstr);
         }
         #endif
-
-        // !!! FIXME: let app supply symbol, too.
-
-        printf("Resolved '%s' to %p ...\n", symstr, addr);
 
         if (addr == NULL)
         {
             if (ELF_ST_BIND(symbol->st_info) != STB_WEAK)
                 DLOPEN_FAIL("Couldn't resolve symbol");
         } // if
+
+        printf("Resolved '%s' to %p ...\n", symstr, addr);
     } // if
 
     *_addr = (uintptr) addr;
@@ -932,8 +933,10 @@ static int call_so_init(ElfContext *ctx)
     return 1;
 } // call_so_init
 
+static void *noop_resolver(const char *sym) { return NULL; }
 
-void *MOJOELF_dlopen_mem(const void *buf, const long buflen)
+void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
+                         MOJOELF_SymbolCallback resolver)
 {
     ElfContext ctx;
 
@@ -944,6 +947,7 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen)
     memset(&ctx, '\0', sizeof (ElfContext));
     ctx.buf = (const uint8 *) buf;
     ctx.buflen = (size_t) buflen;
+    ctx.resolver = resolver ? resolver : noop_resolver;
     ctx.header = (const ElfHeader *) buf;
     ctx.retval = (ElfHandle *) Malloc(sizeof (ElfHandle));
     if (ctx.retval == NULL)
@@ -1034,7 +1038,7 @@ void MOJOELF_dlclose(void *lib)
 
 
 #if MOJOELF_SUPPORT_DLOPEN_FILE || MOJOELF_TEST
-void *MOJOELF_dlopen_file(const char *fname)
+void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver)
 {
     void *retval = NULL;
     struct stat statbuf;
@@ -1053,7 +1057,7 @@ void *MOJOELF_dlopen_file(const char *fname)
     {
         close(fd);
         fd = -1;
-        retval = MOJOELF_dlopen_mem(buf, statbuf.st_size);
+        retval = MOJOELF_dlopen_mem(buf, statbuf.st_size, resolver);
     } // else
 
     if (fd != -1)
@@ -1068,9 +1072,26 @@ void *MOJOELF_dlopen_file(const char *fname)
 
 
 #if MOJOELF_TEST
+static const char *test_person(void)
+{
+    static const char *names[] = { "Alice", "Bob", "Carl", "David", "Eve", 0 };
+    static int calls = 0;
+    const char *retval = names[calls++];
+    if (names[calls] == NULL)
+        calls = 0;
+    return retval;
+} // test_person
+
+static void *test_resolver(const char *sym)
+{
+    if (strcmp(sym, "person") == 0)
+        return test_person;
+    return NULL;
+} // test_resolver
+
 int main(int argc, char **argv)
 {
-    int (*hello)(const char *str) = NULL;
+    int (*hello)(const int people_count) = NULL;
     void *lib = NULL;
     int rc;
     int i;
@@ -1078,7 +1099,7 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++)
     {
         printf("opening '%s'...\n", argv[i]);
-        lib = MOJOELF_dlopen_file(argv[i]);
+        lib = MOJOELF_dlopen_file(argv[i], test_resolver);
         if (lib == NULL)
             printf("failed '%s'! (%s)\n", argv[i], MOJOELF_dlerror());
         else
@@ -1090,7 +1111,7 @@ int main(int argc, char **argv)
             else
             {
                 printf("Found 'hello' function at %p. Calling...\n", hello);
-                rc = hello("world");
+                rc = hello(8);
                 printf("...back from function call! (rc==%d)\n", rc);
             } // else
             printf("closing '%s'...\n", argv[i]);
