@@ -31,6 +31,12 @@
 #define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
 #endif
 
+#if 1
+#define dbgprintf(x) do {} while (0)
+#else
+#define dbgprintf(x) printf x
+#endif
+
 typedef intptr_t intptr;
 typedef uint8_t uint8;
 typedef uint16_t uint16;
@@ -721,7 +727,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 
     else if (symbol->st_shndx == SHN_UNDEF)
     {
-        printf("Resolving '%s' ...\n", symstr);
+        dbgprintf(("Resolving '%s' ...\n", symstr));
 
         addr = ctx->resolver(symstr);  // give caller's resolver first shot.
 
@@ -741,7 +747,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
                 DLOPEN_FAIL("Couldn't resolve symbol");
         } // if
 
-        printf("Resolved '%s' to %p ...\n", symstr, addr);
+        dbgprintf(("Resolved '%s' to %p ...\n", symstr, addr));
     } // if
 
     *_addr = (uintptr) addr;
@@ -914,7 +920,7 @@ static int build_export_list(ElfContext *ctx)
             (addr != ctx->init) &&
             (addr != ctx->retval->fini))
         {
-            printf("Exporting '%s' as '%p' ...\n", symstr, addr);
+            dbgprintf(("Exporting '%s' as '%p' ...\n", symstr, addr));
             if (!add_exported_symbol(ctx, symstr, addr))
                 return 0;
         } // if
