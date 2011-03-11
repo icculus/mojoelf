@@ -38,7 +38,7 @@ typedef uint32_t uint32;
 typedef uint64_t uint64;
 typedef uintptr_t uintptr;
 
-#if 1 //defined(__linux__)
+#if defined(__linux__)
     #define MOJOELF_OSABI 0  // ELFOSABI_SYSV ... not ELFOSABI_LINUX!
     #define MOJOELF_OSABIVERSION 0
 #else
