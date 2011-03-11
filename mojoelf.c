@@ -682,12 +682,15 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     else if (symbol->st_shndx == 0)  // SHN_UNDEF
     {
         printf("Resolving '%s' ...\n", symstr);
+        addr = NULL;
 
         #if MOJOELF_ALLOW_SYSTEM_RESOLVE
-        addr = dlsym(NULL, symstr);
-        int i;
-        for (i = 0; (addr == NULL) && (i < ctx->retval->dlopens_count); i++)
-            addr = dlsym(ctx->retval->dlopens[i], symstr);
+        {
+            int i;
+            addr = dlsym(NULL, symstr);
+            for (i = 0; (addr == NULL) && (i < ctx->retval->dlopens_count); i++)
+                addr = dlsym(ctx->retval->dlopens[i], symstr);
+        }
         #endif
 
         // !!! FIXME: let app supply symbol, too.
