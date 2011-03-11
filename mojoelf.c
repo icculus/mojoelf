@@ -16,7 +16,7 @@
 // ELF specifications: http://refspecs.freestandards.org/elf/
 
 #ifndef MOJOELF_TEST
-#define MOJOELF_TEST 1   // compiles a main() for a test app.
+#define MOJOELF_TEST 0   // don't compile a main() for a test app.
 #endif
 
 #ifndef MOJOELF_SUPPORT_DLERROR
