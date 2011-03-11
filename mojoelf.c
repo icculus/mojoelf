@@ -144,6 +144,7 @@ typedef uintptr_t uintptr;
 #define DT_INIT_ARRAYSZ 27
 #define DT_FINI_ARRAY 25
 #define DT_FINI_ARRAYSZ 28
+#define SHT_DYNSYM 11
 #define SHN_UNDEF 0
 #define SHN_ABS 0xFFF1
 #define STB_WEAK 2
@@ -437,20 +438,21 @@ static int process_section_headers(ElfContext *ctx)
         if (!validate_elf_section(ctx, section))
             return 0;
 
-        if (section->sh_type == 11)  // SHT_DYNSYM
+        if (section->sh_type == SHT_DYNSYM)
         {
-            saw_dynsym = 1;
-            if (ctx->dyntabs[6] == NULL)
+            const ElfDynTable *dt = ctx->dyntabs[DT_SYMTAB];
+            if (dt == NULL)
                 DLOPEN_FAIL("Dynamic symbol table section, but not program");
-            else if (ctx->dyntabs[6]->d_un.d_ptr != section->sh_offset)
+            else if (dt->d_un.d_ptr != section->sh_offset)
                 DLOPEN_FAIL("Dynamic symbol table program/section mismatch");
-            else if (ctx->dyntabs[6]->d_un.d_ptr != section->sh_offset)
-                DLOPEN_FAIL("Dynamic symbol table program/section mismatch");
+            else if ((section->sh_offset + section->sh_size) >= ctx->buflen)
+                DLOPEN_FAIL("Bogus dynamic symbol table offset/size");
             else if (section->sh_entsize != MOJOELF_SIZEOF_SYMENT)
                 DLOPEN_FAIL("Bogus dynamic symbol table section entsize");
             else if (section->sh_size % MOJOELF_SIZEOF_SYMENT)
                 DLOPEN_FAIL("Bogus dynamic symbol table section size");
             ctx->symtabcount = section->sh_size / MOJOELF_SIZEOF_SYMENT;
+            saw_dynsym = 1;
         } // if
     } // for
 
@@ -547,11 +549,8 @@ static int walk_dynamic_table(ElfContext *ctx)
     else if (dyntabs[DT_SYMENT]->d_un.d_val != MOJOELF_SIZEOF_SYMENT)
         DLOPEN_FAIL("Bogus DT_SYMENT value");
 
-    // !!! FIXME: is there a size of the symbol table without parsing
-    // !!! FIXME:  the section headers?
-    if (dyntabs[DT_SYMTAB]->d_un.d_ptr >= ctx->buflen)
-        DLOPEN_FAIL("Bogus DT_SYMTAB offset");
-
+    // We don't know the size of the symbol table yet. We check that later
+    //  in process_section_headers()...
     ctx->symtab = (const ElfSymTable *)
                     (ctx->buf + dyntabs[DT_SYMTAB]->d_un.d_ptr);
 
@@ -704,13 +703,13 @@ static int load_external_dependencies(ElfContext *ctx)
 
 static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 {
-    // !!! FIXME: figure out symbol table count, fail if sym >= to it.
     const ElfSymTable *symbol = ctx->symtab + sym;
     const char *symstr = NULL;
-    // !!! FIXME: verify this.
     void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
 
-    if (symbol->st_name >= ctx->strtablen)
+    if (symbol->st_value > ctx->retval->mmaplen)
+        DLOPEN_FAIL("Bogus symbol address");
+    else if (symbol->st_name >= ctx->strtablen)
         DLOPEN_FAIL("Bogus symbol name");
 
     symstr = ctx->strtab + symbol->st_name;
@@ -755,7 +754,9 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
     uintptr *fixup = (uintptr *) (mmapaddr + (r_offset - ctx->base));
     uintptr addr = 0;
 
-    if (!resolve_symbol(ctx, r_sym, &addr))
+    if (r_sym >= ctx->symtabcount)
+        DLOPEN_FAIL("Bogus symbol index");
+    else if (!resolve_symbol(ctx, r_sym, &addr))
         return 0;
 
     switch (r_type)
@@ -868,19 +869,8 @@ static int add_exported_symbol(ElfContext *ctx, const char *sym, void *addr)
     const int syms_count = ctx->retval->syms_count;
     ElfSymbols *syms = ctx->retval->syms;
     void *ptr;
-    int i;
 
-    for (i = 0; i < syms_count; i++)
-    {
-        if (strcmp(syms[i].sym, sym) == 0)
-        {
-            // !!! FIXME: This failure is possibly our bug, since we don't
-            // !!! FIXME:  parse the symbol table directly.
-            if (addr != syms[i].addr)
-                DLOPEN_FAIL("Exporting symbol twice with different addresses");
-            return 1;  // already added.
-        } // if
-    } // for
+    // We don't check for duplicates here. You get the first one in the list!
 
     ptr = Realloc(syms, (syms_count + 1) * sizeof (ElfSymbols));
     if (ptr == NULL)
@@ -906,11 +896,12 @@ static int build_export_list(ElfContext *ctx)
 
     for (i = 1; i < ctx->symtabcount; i++, symbol++)
     {
-        // !!! FIXME: verify this.
         void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
         const char *symstr;
 
-        if (symbol->st_name >= ctx->strtablen)
+        if (symbol->st_value > ctx->retval->mmaplen)
+            DLOPEN_FAIL("Bogus symbol address");
+        else if (symbol->st_name >= ctx->strtablen)
             DLOPEN_FAIL("Bogus symbol name");
 
         symstr = ctx->strtab + symbol->st_name;
