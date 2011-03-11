@@ -159,6 +159,7 @@ typedef uintptr_t uintptr;
 #define DT_INIT_ARRAYSZ 27
 #define DT_FINI_ARRAY 25
 #define DT_FINI_ARRAYSZ 28
+#define SHT_NOBITS 8
 #define SHT_DYNSYM 11
 #define SHN_UNDEF 0
 #define SHN_ABS 0xFFF1
@@ -440,7 +441,11 @@ static int validate_elf_header(const ElfContext *ctx)
 static int validate_elf_section(const ElfContext *ctx, const ElfSection *section)
 {
     if (section->sh_offset + section->sh_size > ctx->buflen)
-        DLOPEN_FAIL("Bogus ELF program offset/size");
+    {
+        // Spec says NOBITS may have non-zero size, but takes no space in file.
+        if (section->sh_type != SHT_NOBITS)
+            DLOPEN_FAIL("Bogus ELF program offset/size");
+    } // if
     // we currently ignore the string table in validate_elf_header, so we
     //  can't verify this string.
     //else if ((maxstr > 0) && (sect->sh_name > maxstr))
