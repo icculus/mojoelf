@@ -1,0 +1,4 @@
+- /lib/libmemusage.so uses R_X86_64_DTPMOD64
+- /lib/libproc-3.2.8.so uses R_X86_64_64
+- libc uses R_X86_64_TPOFF64
+- libdl uses DT_INIT_ARRAY
