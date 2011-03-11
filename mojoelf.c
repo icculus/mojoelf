@@ -1038,6 +1038,7 @@ int main(int argc, char **argv)
 {
     int (*hello)(const char *str) = NULL;
     void *lib = NULL;
+    int rc;
     int i;
 
     for (i = 1; i < argc; i++)
@@ -1055,8 +1056,8 @@ int main(int argc, char **argv)
             else
             {
                 printf("Found 'hello' function at %p. Calling...\n", hello);
-                hello("world");
-                printf("...back from function call!\n");
+                rc = hello("world");
+                printf("...back from function call! (rc==%d)\n", rc);
             } // else
             printf("closing '%s'...\n", argv[i]);
             MOJOELF_dlclose(lib);
