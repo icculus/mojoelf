@@ -30,6 +30,10 @@
 #define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
 #endif
 
+#ifndef MOJOELF_REDUCE_LIBC_DEPENDENCIES
+#ifndef MOJOELF_REDUCE_LIBC_DEPENDENCIES 0
+#endif
+
 #if MOJOELF_TEST || (MOJOELF_SUPPORT_DLERROR && MOJOELF_SUPPORT_DLOPEN_FILE)
 #include <errno.h>
 #else
@@ -277,11 +281,14 @@ typedef struct ElfHandle  // this is what MOJOELF_dlopen_*() returns.
 
 // Actual shared object loading happens here.
 
+#if !MOJOELF_REDUCE_LIBC_DEPENDENCIES
+#define Strcmp(a,b) strcmp(a,b)
+#define Strcpy(a,b) strcpy(a,b)
+#define Memzero(buf,len) memset(buf, '\0', len)
+#define Memcopy(dst,src,len) memcpy(dst,src,len)
+#else
 static inline int Strcmp(const char *_a, const char *_b)
 {
-#if 0
-    return strcmp(_a, _b);
-#else
     while (*_a)
     {
         const char a = *(_a++);
@@ -294,14 +301,10 @@ static inline int Strcmp(const char *_a, const char *_b)
             return 0;
     } // while
     return 0;
-#endif
 } // Strcmp
 
 static inline void Strcpy(char *_a, const char *_b)
 {
-#if 0
-    return strcpy(_a, _b);
-#else
     while (1)
     {
         const char b = *(_b++);
@@ -309,14 +312,10 @@ static inline void Strcpy(char *_a, const char *_b)
         if (b == '\0')
             return;
     } // while    
-#endif
 } // Strcpy
 
 static inline void Memzero(void *buf, size_t len)
 {
-#if 0
-    memset(buf, '\0', len);
-#else
     uintptr *ptrnative = (uintptr *) buf;
     uint8 *ptrbyte;
 
@@ -329,14 +328,10 @@ static inline void Memzero(void *buf, size_t len)
     ptrbyte = (uint8 *) ptrnative;
     while (len--)
         *(ptrbyte++) = '\0';
-#endif
 } // Memzero
 
 static inline void Memcopy(void *dst, const void *src, size_t len)
 {
-#if 0
-    memcpy(dst, src, len);
-#else
     uintptr *dptrnative = (uintptr *) dst;
     const uintptr *sptrnative = (uintptr *) src;
     uint8 *dptrbyte;
@@ -358,8 +353,8 @@ static inline void Memcopy(void *dst, const void *src, size_t len)
         dptrbyte++;
         sptrbyte++;
     } // while
-#endif
 } // Memzero
+#endif
 
 static inline void *Malloc(const size_t len)
 {
