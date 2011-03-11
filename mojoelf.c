@@ -1005,6 +1005,7 @@ static int build_export_list(ElfContext *ctx)
     if (ctx->retval->syms == NULL)
         return 0;
 
+    symbol = ctx->symtab;
     for (i = 1; i < ctx->symtabcount; i++, symbol++)
     {
         void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
