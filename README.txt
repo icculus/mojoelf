@@ -9,6 +9,7 @@ To use this nonsense:
     MOJOELF_SUPPORT_DLOPEN_FILE 0 // remove MOJOELF_dlopen_file()
     MOJOELF_ALLOW_SYSTEM_RESOLVE 0  // don't use dlopen()/dlsym() internally.
     MOJOELF_REDUCE_LIBC_DEPENDENCIES 0  // use less libc calls. Scary!
+    NDEBUG 1  // Turns off assert, which removes libc dependencies.
 - Your calling code should #include mojoelf.h ...
 - Put your ELF library in memory, and call MOJOELF_dlopen_mem() with the
   address of the memory buffer, the size of the buffer, and (optionally),
