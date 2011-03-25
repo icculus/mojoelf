@@ -781,6 +781,14 @@ static int load_external_dependencies(ElfContext *ctx)
             else
             {
                 const char *str = ctx->strtab + offset;
+
+                #ifdef __APPLE__
+                // things like printf() can resolve out of Apple's C runtime.
+                if (Strcmp(str, "libc.so.6") == 0)
+                    str = "libSystem.dylib";
+                #endif
+
+                dbgprintf(("dlopen()'ing \"%s\" ...\n", str));
                 void *lib = dlopen(str, RTLD_NOW);
                 if (lib == NULL)
                     DLOPEN_FAIL("Couldn't load dependency");
