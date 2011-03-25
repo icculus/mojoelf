@@ -45,7 +45,7 @@ The resolver callback looks like this:
 
       extern int my_function(int argument);
 
-      void my_resolver(const char *sym)
+      void *my_resolver(const char *sym)
       {
           if (strcmp(sym, "my_function") == 0)
               return my_function;
