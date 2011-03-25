@@ -1,3 +1,11 @@
+/**
+ * MojoELF; load ELF binaries from a memory buffer.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
 #ifndef INCL_MOJOELF_H
 #define INCL_MOJOELF_H
 
