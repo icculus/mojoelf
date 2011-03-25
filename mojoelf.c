@@ -22,6 +22,15 @@
 
 // ELF specifications: http://refspecs.freestandards.org/elf/
 
+// If not defined, force to current x86/x86_64 Linux OSABI and version.
+#ifndef MOJOELF_OSABI
+#define MOJOELF_OSABI 0  // x86 Linux uses ELFOSABI_SYSV, not ELFOSABI_LINUX!
+#endif
+
+#ifndef MOJOELF_OSABIVERSION
+#define MOJOELF_OSABIVERSION 0
+#endif
+
 #ifndef MOJOELF_SUPPORT_DLERROR
 #define MOJOELF_SUPPORT_DLERROR 1
 #endif
@@ -59,13 +68,6 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 typedef uintptr_t uintptr;
-
-#if defined(__linux__)
-    #define MOJOELF_OSABI 0  // ELFOSABI_SYSV ... not ELFOSABI_LINUX!
-    #define MOJOELF_OSABIVERSION 0
-#else
-    #error Please define your platform.
-#endif
 
 #if defined(__i386__)
     #define MOJOELF_MACHINE_TYPE 3   // EM_386
