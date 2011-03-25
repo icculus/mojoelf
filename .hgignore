@@ -1,5 +1,5 @@
 syntax:glob
-hello.so
-test
-mojoelf
-testsdl
+test/hello.so
+test/test
+test/mojoelf
+test/testsdl
