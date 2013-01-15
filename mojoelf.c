@@ -782,18 +782,6 @@ static int load_external_dependencies(ElfContext *ctx)
             else
             {
                 const char *str = ctx->strtab + offset;
-
-                // things like printf() can resolve out of Apple's C runtime.
-                #ifdef __APPLE__
-                if ((Strcmp(str, "libc.so.6") == 0) ||
-                    (Strcmp(str, "libm.so.6") == 0) ||
-                    (Strcmp(str, "libpthread.so.0") == 0) ||
-                    (Strcmp(str, "libdl.so.2") == 0))
-                {
-                    str = "libSystem.dylib";
-                } // if
-                #endif
-
                 dbgprintf(("dlopen()'ing \"%s\" ...\n", str));
                 void *lib = dlopen(str, RTLD_NOW);
                 if (lib == NULL)
@@ -811,15 +799,6 @@ static int load_external_dependencies(ElfContext *ctx)
 
     return 1;
 } // load_external_dependencies
-
-
-#ifdef __APPLE__
-#include <errno.h>
-static int * mac_errno_location(void)
-{
-    return &errno;
-}
-#endif
 
 
 static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
@@ -843,23 +822,6 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
         dbgprintf(("Resolving '%s' ...\n", symstr));
 
         addr = ctx->resolver(symstr);  // give caller's resolver first shot.
-
-        // Some Mac OS X things don't map perfectly...not a complete list!
-        #ifdef __APPLE__
-        if (addr == NULL)
-        {
-            if (Strcmp(symstr, "stderr") == 0)
-                addr = stderr;
-            else if (Strcmp(symstr, "stdout") == 0)
-                addr = stdout;
-            else if (Strcmp(symstr, "stdin") == 0)
-                addr = stdin;
-            else if (Strcmp(symstr, "__strdup") == 0)
-                addr = strdup;
-            else if (Strcmp(symstr, "__errno_location") == 0)
-                addr = mac_errno_location;
-        }
-        #endif
 
         #if MOJOELF_ALLOW_SYSTEM_RESOLVE
         if (addr == NULL)

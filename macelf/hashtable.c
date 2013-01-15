@@ -1,3 +1,8 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+
 #include "hashtable.h"
 
 typedef struct HashItem
@@ -158,8 +163,6 @@ void hash_destroy(HashTable *table)
 {
     uint32_t i;
     void *data = table->data;
-    HashFree f = table->f;
-    void *d = table->d;
     for (i = 0; i < table->table_len; i++)
     {
         HashItem *item = table->table[i];
