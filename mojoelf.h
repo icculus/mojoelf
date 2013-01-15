@@ -20,6 +20,7 @@ void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver);
 void *MOJOELF_dlsym(void *lib, const char *sym);
 void MOJOELF_dlclose(void *lib);
 const char *MOJOELF_dlerror(void);
+const void *MOJOELF_getentry(void *lib);
 
 #ifdef __cplusplus
 }

@@ -278,6 +278,7 @@ typedef struct ElfHandle  // this is what MOJOELF_dlopen_*() returns.
     size_t mmaplen;
     int syms_count;
     ElfSymbols *syms;
+    void *entry;
     void *fini;
     int dlopens_count;
     #if MOJOELF_ALLOW_SYSTEM_RESOLVE
@@ -1110,6 +1111,7 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
     if (ctx.retval == NULL)
         goto fail;
     ctx.retval->mmapaddr = ((void *) MAP_FAILED);
+    ctx.retval->entry = (void *) ctx.header->e_entry;
 
     // here we go.
     if (!validate_elf_header(&ctx)) goto fail;
@@ -1226,6 +1228,14 @@ void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver)
     return retval;
 } // MOJOELF_dlopen_file
 #endif
+
+
+const void *MOJOELF_getentry(void *lib)
+{
+    const ElfHandle *h = (const ElfHandle *) lib;
+    return h ? h->entry : NULL;
+} // MOJOELF_getentry
+
 
 // end of mojoelf.c ...
 
