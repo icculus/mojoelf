@@ -543,7 +543,7 @@ static int process_section_headers(ElfContext *ctx)
         {
             if (dt == NULL)
                 DLOPEN_FAIL("Dynamic symbol table section, but not program");
-            else if (dt->d_un.d_ptr != section->sh_offset)
+            else if ((dt->d_un.d_ptr-ctx->base) != section->sh_offset)
                 DLOPEN_FAIL("Dynamic symbol table program/section mismatch");
             else if ((section->sh_offset + section->sh_size) >= ctx->buflen)
                 DLOPEN_FAIL("Bogus dynamic symbol table offset/size");
@@ -574,7 +574,7 @@ static int map_pages(ElfContext *ctx)
     const int header_count = (int) ctx->header->e_phnum;
     const size_t mmaplen = ctx->mmaplen;
     const int mmapprot = PROT_READ | PROT_WRITE;
-    const int mmapflags = MAP_ANON | MAP_PRIVATE;
+    const int mmapflags = MAP_ANON | MAP_PRIVATE | (ctx->base ? MAP_FIXED : 0);
     void *mmapaddr = mmap((void *) ctx->base, mmaplen, mmapprot, mmapflags, -1, 0);
     int i;
 
@@ -809,7 +809,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     const char *symstr = NULL;
     void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
 
-    if (symbol->st_value > ctx->retval->mmaplen)
+    if ((symbol->st_value) && ((symbol->st_value - ctx->base) > ctx->retval->mmaplen))
         DLOPEN_FAIL("Bogus symbol address");
     else if (symbol->st_name >= ctx->strtablen)
         DLOPEN_FAIL("Bogus symbol name");
