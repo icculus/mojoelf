@@ -917,7 +917,7 @@ static int fixup_rel_internal(ElfContext *ctx, const ElfDynTable *dt_rel,
     const size_t offset = ((size_t) dt_rel->d_un.d_ptr) - ctx->base;
     const size_t relsz = (size_t) dt_relsz->d_un.d_val;
     const size_t count = relsz / MOJOELF_SIZEOF_RELENT;
-    const ElfRelA *rel = (const ElfRelA *) (ctx->buf + offset);
+    const ElfRel *rel = (const ElfRel *) (ctx->buf + offset);
     int i;
 
     for (i = 0; i < count; i++, rel++)
