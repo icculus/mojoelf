@@ -183,6 +183,7 @@ typedef uintptr_t uintptr;
 
 // Warning: These may change for other architectures!
 #define R_NONE 0
+#define R_COPY 5
 #define R_GLOB_DATA 6
 #define R_JUMP_SLOT 7
 #define R_RELATIVE 8
@@ -868,6 +869,7 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
         // Note libc.so.6 itself also seems to use: R_*_64, R_*_TPOFF64
         case R_GLOB_DATA:
         case R_JUMP_SLOT:
+        case R_COPY:
             *fixup = addr;
             break;
         case R_RELATIVE:
