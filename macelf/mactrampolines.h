@@ -26,6 +26,11 @@ MACTRAMPOLINE_PRINTF(scanf,(const char *fmt, ...), (fmt, ap))
 // Entry points we define ourselves without any macro glue.
 MACTRAMPOLINE_OVERRIDE(__libc_start_main)
 MACTRAMPOLINE_OVERRIDE(__errno_location)
+MACTRAMPOLINE_OVERRIDE(__cxa_atexit)
+MACTRAMPOLINE_OVERRIDE(__ctype_get_mb_cur_max)
+MACTRAMPOLINE_OVERRIDE(__fprintf_chk)
+MACTRAMPOLINE_OVERRIDE(__printf_chk)
+MACTRAMPOLINE_OVERRIDE(fputs_unlocked)
 MACTRAMPOLINE_OVERRIDE(creat)
 MACTRAMPOLINE_OVERRIDE(shm_open)
 MACTRAMPOLINE_OVERRIDE(chmod)
@@ -47,6 +52,9 @@ MACTRAMPOLINE_OVERRIDE(truncate)
 MACTRAMPOLINE_OVERRIDE(mmap)
 MACTRAMPOLINE_OVERRIDE(fseeko)
 MACTRAMPOLINE_OVERRIDE(ftello)
+MACTRAMPOLINE_OVERRIDE(bindtextdomain)
+MACTRAMPOLINE_OVERRIDE(dcgettext)
+
 
 // !!! FIXME: mode_t is 2 bytes on Mac OS X, but 4 on Linux.
 //MACTRAMPOLINE(DBM*,dbm_open,(const char *a, int b, mode_t c),(a,b,c),return)

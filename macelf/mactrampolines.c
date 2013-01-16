@@ -79,7 +79,48 @@ static int mactrampoline___libc_start_main(
 {
     STUBBED("probably need to mess with stack, etc");
     return main(argc, argv, environ);  // shouldn't _actually_ return.
-}
+} // mactrampoline___libc_start_main
+
+static int mactrampoline___cxa_atexit(void (*func) (void *), void * arg, void * dso_handle)
+{
+    STUBBED("write me");
+    return 0;
+} // mactrampoline___cxa_atexit
+
+static size_t mactrampoline___ctype_get_mb_cur_max(void)
+{
+    STUBBED("I have no idea");
+    return 4;
+} // mactrampoline___ctype_get_mb_cur_max
+
+
+static int mactrampoline___fprintf_chk(FILE *io, int flag, const char *fmt, ...)
+{
+    STUBBED("check flag (and stack!)");
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vfprintf(io, fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___fprintf_chk
+
+static int mactrampoline___printf_chk(int flag, const char *fmt, ...)
+{
+    STUBBED("check flag (and stack!)");
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vprintf(fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___printf_chk
+
+
+// Just use the "locked" versions for now, since the unlocked don't exist.
+static int mactrampoline_fputs_unlocked(const char *str, FILE *io)
+{
+    return fputs(str, io);
+} // mactrampoline_fputs_unlocked
+
 
 // mode_t is 2 bytes on Mac OS X, but 4 on Linux.
 // dev_t is 4 bytes on Mac OS X, but 8 on Linux.
@@ -165,6 +206,19 @@ static /*off_t*/uintptr_t mactrampoline_ftello(FILE* io)
     return (uintptr_t) ftello(io);
 } // mactrampoline_ftello
 
+
+// gettext support functions...
+static char *mactrampoline_bindtextdomain(const char *domain, const char *dir)
+{
+    STUBBED("write me");
+    return NULL;
+} // mactrampoline_bindtextdomain
+
+static char *mactrampoline_dcgettext(const char *domain, const char *msgid, int category)
+{
+    STUBBED("write me");
+    return (char *) msgid;
+} // mactrampoline_dcgettext
 
 
 // Obviously we want to map dlopen and friends through MojoELF. We can't let
