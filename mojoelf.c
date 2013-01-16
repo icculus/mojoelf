@@ -144,6 +144,7 @@ typedef uintptr_t uintptr;
 
 // The usual ELF defines from the spec...
 #define ELF_ST_BIND(i) ((i) >> 4)
+#define ET_EXEC 2
 #define ET_DYN 3
 #define PT_LOAD 1
 #define PT_DYNAMIC 2
@@ -426,7 +427,7 @@ static int validate_elf_header(const ElfContext *ctx)
         DLOPEN_FAIL("Unsupported/bogus ELF OSABI");
     else if (buf[EI_OSABIVER] != MOJOELF_OSABIVERSION)
         DLOPEN_FAIL("Unsupported/bogus ELF OSABI");
-    else if (hdr->e_type != ET_DYN)  // (.so files)
+    else if ((hdr->e_type != ET_DYN) && (hdr->e_type != ET_EXEC)) // binary or .so
         DLOPEN_FAIL("Unsupported/bogus ELF object type");
     else if (hdr->e_machine != MOJOELF_MACHINE_TYPE)
         DLOPEN_FAIL("Unsupported/bogus ELF machine type");
@@ -611,6 +612,7 @@ static int walk_dynamic_table(ElfContext *ctx)
     const ElfDynTable **dyntabs = ctx->dyntabs;
     const int dyntabcount = ctx->dyntabcount;
     uint8 *mmapaddr = (uint8 *) ctx->retval->mmapaddr;
+    uintptr strtaboffset = 0;
     int i;
 
     for (i = 0; i < dyntabcount; i++, dyntab++)
@@ -651,7 +653,7 @@ static int walk_dynamic_table(ElfContext *ctx)
     // We don't know the size of the symbol table yet. We check that later
     //  in process_section_headers()...
     ctx->symtab = (const ElfSymTable *)
-                    (ctx->buf + dyntabs[DT_SYMTAB]->d_un.d_ptr);
+                    (ctx->buf + (dyntabs[DT_SYMTAB]->d_un.d_ptr - ctx->base));
 
     if (dyntabs[DT_RELA])
     {
@@ -663,7 +665,7 @@ static int walk_dynamic_table(ElfContext *ctx)
             DLOPEN_FAIL("Unsupported/bogus DT_RELAENT value");
         else if (dyntabs[DT_RELASZ]->d_un.d_val % MOJOELF_SIZEOF_RELAENT)
             DLOPEN_FAIL("Bogus DT_RELASZ value");
-        else if (dyntabs[DT_RELA]->d_un.d_ptr +
+        else if ((dyntabs[DT_RELA]->d_un.d_ptr - ctx->base) +
                  dyntabs[DT_RELASZ]->d_un.d_val >= ctx->buflen)
             DLOPEN_FAIL("Bogus DT_RELA value");
     } // if
@@ -678,8 +680,7 @@ static int walk_dynamic_table(ElfContext *ctx)
             DLOPEN_FAIL("Unsupported/bogus DT_RELENT value");
         else if (dyntabs[DT_RELSZ]->d_un.d_val % MOJOELF_SIZEOF_RELENT)
             DLOPEN_FAIL("Bogus DT_RELSZ value");
-        else if (dyntabs[DT_REL]->d_un.d_ptr +
-                 dyntabs[DT_RELSZ]->d_un.d_val >= ctx->buflen)
+        else if ((dyntabs[DT_REL]->d_un.d_ptr - ctx->base) >= ctx->buflen)
             DLOPEN_FAIL("Bogus DT_REL value");
     } // if
 
@@ -689,7 +690,7 @@ static int walk_dynamic_table(ElfContext *ctx)
             DLOPEN_FAIL("No DT_PLTREL table");
         else if (dyntabs[DT_PLTRELSZ] == NULL)
             DLOPEN_FAIL("No DT_PLTRELSZ table");
-        else if (dyntabs[DT_JMPREL]->d_un.d_ptr +
+        else if ((dyntabs[DT_JMPREL]->d_un.d_ptr - ctx->base) +
                  dyntabs[DT_PLTRELSZ]->d_un.d_val >= ctx->buflen)
             DLOPEN_FAIL("Bogus DT_PLTREL value");
 
@@ -719,11 +720,12 @@ static int walk_dynamic_table(ElfContext *ctx)
         } // else
     } // if
 
+    strtaboffset = dyntabs[DT_STRTAB]->d_un.d_ptr - ctx->base;
     ctx->strtablen = (size_t) dyntabs[DT_STRSZ]->d_un.d_val;
-    ctx->strtab = (const char *) (ctx->buf + dyntabs[DT_STRTAB]->d_un.d_ptr);
+    ctx->strtab = (const char *) (ctx->buf + strtaboffset);
     if (ctx->strtablen == 0)  // technically this is allowed, but oh well.
         DLOPEN_FAIL("Dynamic string table is empty");
-    else if ((dyntabs[DT_STRTAB]->d_un.d_ptr + ctx->strtablen) > ctx->buflen)
+    else if ((strtaboffset + ctx->strtablen) > ctx->buflen)
         DLOPEN_FAIL("Dynamic string table has bogus offset and/or length");
     else if (ctx->strtab[0] != '\0')
         DLOPEN_FAIL("Dynamic string table doesn't start with null byte");
@@ -884,7 +886,7 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
 static int fixup_rela_internal(ElfContext *ctx, const ElfDynTable *dt_rela,
                                const ElfDynTable *dt_relasz)
 {
-    const size_t offset = (size_t) dt_rela->d_un.d_ptr;
+    const size_t offset = ((size_t) dt_rela->d_un.d_ptr) - ctx->base;
     const size_t relasz = (size_t) dt_relasz->d_un.d_val;
     const size_t count = relasz / MOJOELF_SIZEOF_RELAENT;
     const ElfRelA *rela = (const ElfRelA *) (ctx->buf + offset);
@@ -912,7 +914,7 @@ static inline int fixup_rela(ElfContext *ctx)
 static int fixup_rel_internal(ElfContext *ctx, const ElfDynTable *dt_rel,
                               const ElfDynTable *dt_relsz)
 {
-    const size_t offset = (size_t) dt_rel->d_un.d_ptr;
+    const size_t offset = ((size_t) dt_rel->d_un.d_ptr) - ctx->base;
     const size_t relsz = (size_t) dt_relsz->d_un.d_val;
     const size_t count = relsz / MOJOELF_SIZEOF_RELENT;
     const ElfRelA *rel = (const ElfRelA *) (ctx->buf + offset);
