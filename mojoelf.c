@@ -995,10 +995,11 @@ static int build_export_list(ElfContext *ctx)
 
     for (i = 1; i <= ctx->symtabcount; i++, symbol++)
     {
-        void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
+        const uintptr offset = symbol->st_value ? (symbol->st_value - ctx->base) : 0;
+        void *addr = ((uint8 *) ctx->retval->mmapaddr) + offset;
         const char *symstr;
 
-        if (symbol->st_value > ctx->retval->mmaplen)
+        if (offset > ctx->retval->mmaplen)
             DLOPEN_FAIL("Bogus symbol address");
         else if (symbol->st_name >= ctx->strtablen)
             DLOPEN_FAIL("Bogus symbol name");
@@ -1025,7 +1026,8 @@ static int build_export_list(ElfContext *ctx)
     symbol = ctx->symtab;
     for (i = 1; i <= ctx->symtabcount; i++, symbol++)
     {
-        void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
+        const uintptr offset = symbol->st_value ? (symbol->st_value - ctx->base) : 0;
+        void *addr = ((uint8 *) ctx->retval->mmapaddr) + offset;
         const char *symstr = ctx->strtab + symbol->st_name;
 
         if ((*symstr != '\0') && 
