@@ -574,7 +574,7 @@ static int map_pages(ElfContext *ctx)
     const size_t mmaplen = ctx->mmaplen;
     const int mmapprot = PROT_READ | PROT_WRITE;
     const int mmapflags = MAP_ANON | MAP_PRIVATE;
-    void *mmapaddr = mmap(NULL, mmaplen, mmapprot, mmapflags, -1, 0);
+    void *mmapaddr = mmap((void *) ctx->base, mmaplen, mmapprot, mmapflags, -1, 0);
     int i;
 
     if (mmapaddr == ((void *) MAP_FAILED))
