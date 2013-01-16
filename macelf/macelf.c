@@ -3,6 +3,8 @@
 #include "mojoelf.h"
 #include "hashtable.h"
 
+char *program_invocation_name = NULL;
+
 static HashTable *resolver_symbols = NULL;
 
 void *macosx_resolver(const char *sym)
@@ -66,6 +68,7 @@ int main(int argc, char **argv, char **envp)
         return 1;
     } // if
 
+    program_invocation_name = argv[1];
     void *lib = MOJOELF_dlopen_file(argv[1], macosx_resolver);
     if (lib == NULL)
     {

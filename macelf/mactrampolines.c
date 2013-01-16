@@ -24,6 +24,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <netdb.h>
+#include <locale.h>
 
 #include "mojoelf.h"
 
@@ -114,12 +115,43 @@ static int mactrampoline___printf_chk(int flag, const char *fmt, ...)
     return retval;
 } // mactrampoline___printf_chk
 
+static void mactrampoline___stack_chk_fail(void)
+{
+    fprintf(stderr, "__stack_chk_fail!\n");
+    fprintf(stderr, "Corrupted stack detected, aborting!\n\n");
+    _exit(1);
+} // mactrampoline___stack_chk_fail
+
 
 // Just use the "locked" versions for now, since the unlocked don't exist.
 static int mactrampoline_fputs_unlocked(const char *str, FILE *io)
 {
     return fputs(str, io);
 } // mactrampoline_fputs_unlocked
+
+static size_t mactrampoline___fpending(FILE *io)
+{
+    STUBBED("write me");
+    return 0;
+} // mactrampoline___fpending
+
+extern char *program_invocation_name;
+static void mactrampoline_error(int status, int errnum, const char *fmt, ...)
+{
+    STUBBED("there are other global vars this function checks");
+    va_list ap;
+    fflush(stdout);
+    fprintf(stderr, "%s: ", program_invocation_name);
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    if (errnum)
+        fprintf(stderr, ": %s", strerror(errnum));
+    fprintf(stderr, "\n");
+    fflush(stderr);
+    if (status != 0)
+        exit(status);
+} // mactrampoline_error
 
 
 // mode_t is 2 bytes on Mac OS X, but 4 on Linux.
@@ -214,11 +246,67 @@ static char *mactrampoline_bindtextdomain(const char *domain, const char *dir)
     return NULL;
 } // mactrampoline_bindtextdomain
 
+static char *mactrampoline_textdomain(const char *domain)
+{
+    STUBBED("write me");
+    return NULL;
+} // mactrampoline_textdomain
+
 static char *mactrampoline_dcgettext(const char *domain, const char *msgid, int category)
 {
     STUBBED("write me");
     return (char *) msgid;
 } // mactrampoline_dcgettext
+
+const unsigned short **mactrampoline___ctype_b_loc(void)
+{
+    STUBBED("write me");
+    STUBBED("this should be thread-local, too");
+    return NULL;
+} // mactrampoline___ctype_b_loc
+
+// mbstate_t is totally different on Mac and Linux.
+//  On Linux, it's always 8 bytes, on Mac, it's a whole big thing.
+int mactrampoline_mbsinit(/*mbstate_t*/uint64_t *mbstate)
+{
+    STUBBED("write me");
+    return (*mbstate == 0);
+} // mactrampoline_mbsinit
+
+
+typedef enum
+{
+    LINUX_LC_CTYPE = 0,
+    LINUX_LC_NUMERIC = 1,
+    LINUX_LC_TIME = 2,
+    LINUX_LC_COLLATE = 3,
+    LINUX_LC_MONETARY = 4,
+    LINUX_LC_MESSAGES = 5,
+    LINUX_LC_ALL = 6,
+} LinuxLocaleCategory;
+
+// Linux uses different values for locale categories, so map them.
+static char *mactrampoline_setlocale(int category, const char *locale)
+{
+    int maccat = 0;
+    switch (category)
+    {
+        #define CVTTOMACLOCALE(cat) case LINUX_##cat: maccat = cat; break;
+        CVTTOMACLOCALE(LC_CTYPE);
+        CVTTOMACLOCALE(LC_NUMERIC);
+        CVTTOMACLOCALE(LC_TIME);
+        CVTTOMACLOCALE(LC_COLLATE);
+        CVTTOMACLOCALE(LC_MONETARY);
+        CVTTOMACLOCALE(LC_MESSAGES);
+        CVTTOMACLOCALE(LC_ALL);
+        #undef CVTTOMACLOCALE
+
+        default: STUBBED("Missing locale category?"); return NULL;
+    } // switch
+
+    return setlocale(maccat, locale);
+} // mactrampoline_setlocale
+
 
 
 // Obviously we want to map dlopen and friends through MojoELF. We can't let
@@ -325,13 +413,13 @@ static int mactrampoline_open(const char *path, int flags, ...)
 } // mactrampoline_open
 
 
-
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
 int build_trampolines(void)
 {
     return insert_symbol("stderr", stderr) &&
            insert_symbol("stdout", stdout) &&
-           insert_symbol("stdin", stdin)
+           insert_symbol("stdin", stdin) &&
+           insert_symbol("program_invocation_name", program_invocation_name)
         #define MACTRAMPOLINE(typ,fn,params,args,ret) \
             && (insert_symbol(#fn, mactrampoline_##fn))
         #define MACTRAMPOLINE_PRINTF(fn, params, args) \
