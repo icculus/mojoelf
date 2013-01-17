@@ -88,7 +88,63 @@ int main(int argc, char **argv, char **envp)
 
     printf("About to call entry point at %p\n", entry);
 
-    entry(argc-1, argv+1, envp);
+    #if defined(__i386__)
+    __asm__ __volatile__ (
+            "pushl %%eax \n\t"  // !!! FIXME: is this stack-allocated like argv?
+
+            // Need to copy argv array to the stack
+            //  Linux entry point expects the array, not a pointer to it,
+            //  to be at the start of the stack.
+            "movl %%ecx,%%ebp  \n\t"  // save a copy of ecx; loop clobbers it.
+            "subl %%ecx,%%esp  \n\t"  // make room for argv array.
+            "0:  \n\t"
+            "movl (%%edx),%%ebx  \n\t"
+            "movl %%ebx,(%%esp)  \n\t"
+            "addl $4,%%edx  \n\t"
+            "addl $4,%%esp  \n\t"
+            "subl $4,%%ecx  \n\t"
+            "cmpl $0,%%ecx  \n\t"
+            "jnz 0b  \n\t"
+            "subl %%ebp,%%esp  \n\t"  // move back again.
+
+            "pushl %%esi \n\t"   // this will be argc in the entry point.
+
+            // Clear all the registers.
+            // Store the entry point in %%ebp, since the entry point
+            //  will clears that register.
+            "movl %%edi,%%ebp  \n\t"
+            "xorl %%eax,%%eax  \n\t"
+            "xorl %%ebx,%%ebx  \n\t"
+            "xorl %%ecx,%%ecx  \n\t"
+            "xorl %%edx,%%edx  \n\t"
+            "xorl %%esi,%%esi  \n\t"
+            "xorl %%edi,%%edi  \n\t"
+
+            // Tail call into the entry point! We're in Linux land!
+            "jmpl *%%ebp \n\t"
+        : // no outputs
+        : "D" (entry), "a" (envp), "d" (argv+1), "S" (argc-1),
+          "c" (argc*sizeof (char*))
+        : "memory", "cc"
+    );
+    #elif 0 // !!! FIXME defined(__x86_64__)
+    __asm__ __volatile__ (
+            "pushq %%rax \n\t"
+            "pushq %%rdx \n\t"
+            "pushq %%rcx \n\t"
+            "xorq %%rax,%%rax  \n\t"
+            "xorq %%rbx,%%rbx  \n\t"
+            "xorq %%rcx,%%rcx  \n\t"
+            "xorq %%rdx,%%rdx  \n\t"
+            "xorq %%rsi,%%rsi  \n\t"
+            "jmpq *%%rdi \n\t"
+        : // no outputs
+        : "D" (entry), "a" (envp), "d" (argv+1), "c" (argc)
+        : "memory", "cc"
+    );
+    #else
+    #error Please define your platform.
+    #endif
 
     fprintf(stderr, "ELF binary shouldn't have returned to our main()!\n");
     MOJOELF_dlclose(lib);
