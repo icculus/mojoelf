@@ -79,7 +79,8 @@ static int mactrampoline___libc_start_main(
 	void *stack_end)
 {
     STUBBED("probably need to mess with stack, etc");
-    return main(argc, argv, environ);  // shouldn't _actually_ return.
+    const int retval = main(argc, argv, environ);
+    exit(retval);
 } // mactrampoline___libc_start_main
 
 static int mactrampoline___cxa_atexit(void (*func) (void *), void * arg, void * dso_handle)
