@@ -25,6 +25,7 @@
 #include <pthread.h>
 #include <netdb.h>
 #include <locale.h>
+#include <getopt.h>
 
 #include "mojoelf.h"
 
