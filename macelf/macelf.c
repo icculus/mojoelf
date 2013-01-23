@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-
+#include <unistd.h>
 #include "mojoelf.h"
 #include "hashtable.h"
 
@@ -11,6 +11,18 @@ static int symbols_missing = 0;
 char *program_invocation_name = NULL;
 
 static HashTable *resolver_symbols = NULL;
+
+static void missing_symbol_called(void)
+{
+    fflush(stdout);
+    fflush(stderr);
+    fprintf(stderr, "\n\nMissing symbol called!\n");
+    fprintf(stderr, "Aborting.\n\n\n");
+    //STUBBED("output backtrace");
+    fflush(stderr);
+    _exit(1);
+} // missing_symbol_called
+
 
 void *macosx_resolver(const char *sym)
 {
@@ -25,8 +37,7 @@ void *macosx_resolver(const char *sym)
             symbols_missing++;
             if (strcmp(sym, "__gmon_start__") == 0)
                 return NULL;  // !!! FIXME: this is just to prevent crash, as MOJOELF_dlopen() calls this before returning.
-            // A Fab Cafe sounds pretty memorable, right?  :)
-            return ((void *) 0xAFabCafe);
+            return ((void *) missing_symbol_called);
         } // if
     } // if
 
