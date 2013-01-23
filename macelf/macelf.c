@@ -1,7 +1,11 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "mojoelf.h"
 #include "hashtable.h"
+
+static int report_missing_symbols = 0;
+static int symbols_missing = 0;
 
 char *program_invocation_name = NULL;
 
@@ -11,7 +15,18 @@ void *macosx_resolver(const char *sym)
 {
     const void *ptr = NULL;
     if (!hash_find(resolver_symbols, sym, &ptr))
-        return NULL;
+    {
+        if (report_missing_symbols)
+        {
+            printf("Missing symbol: %s\n", sym);
+            symbols_missing++;
+            if (strcmp(sym, "__gmon_start__") == 0)
+                return NULL;  // !!! FIXME: this is just to prevent crash, as MOJOELF_dlopen() calls this before returning.
+            // A Fab Cafe sounds pretty memorable, right?  :)
+            return ((void *) 0xAFabCafe);
+        } // if
+    } // if
+
     return (void *) ptr;
 } // macosx_resolver
 
@@ -56,9 +71,32 @@ typedef void(*EntryFn)(int,char**,char**);
 
 int main(int argc, char **argv, char **envp)
 {
-    if (argc <= 1)
+    char *elf = NULL;
+    int startarg = 1;
+    int i;
+    for (i = 1; i < argc; i++)
     {
-        fprintf(stderr, "USAGE: %s <ELFfile> [...command line args...]\n", argv[0]);
+        const char *arg = argv[i];
+        if (strcmp(arg, "--report-missing-symbols") == 0)
+        {
+            report_missing_symbols = 1;
+            continue;
+        } // if
+
+        else if (strncmp(arg, "--", 2) == 0)
+        {
+            fprintf(stderr, "WARNING: Unknown command line option '%s'\n", arg);
+            continue;
+        } // else if
+
+        break;
+    } // for
+
+    startarg = i;
+
+    if (argc-startarg == 0)
+    {
+        fprintf(stderr, "USAGE: %s [...opts...] <ELFfile> [...cmdline...]\n", argv[0]);
         return 1;
     } // if
 
@@ -68,19 +106,26 @@ int main(int argc, char **argv, char **envp)
         return 1;
     } // if
 
-    program_invocation_name = argv[1];
-    void *lib = MOJOELF_dlopen_file(argv[1], macosx_resolver);
+    elf = argv[startarg];
+    program_invocation_name = elf;
+    void *lib = MOJOELF_dlopen_file(argv[startarg], macosx_resolver);
     if (lib == NULL)
     {
-        fprintf(stderr, "Failed to load %s: %s\n", argv[1], MOJOELF_dlerror());
+        fprintf(stderr, "Failed to load %s: %s\n", elf, MOJOELF_dlerror());
         macosx_resolver_deinit();
+        return 1;
+    } // if
+
+    if (report_missing_symbols)
+    {
+        printf("%d symbols missing\n", symbols_missing);
         return 1;
     } // if
 
     EntryFn entry = (EntryFn) MOJOELF_getentry(lib);
     if (entry == NULL)
     {
-        fprintf(stderr, "No entry point in %s\n", argv[1]);
+        fprintf(stderr, "No entry point in %s\n", elf);
         MOJOELF_dlclose(lib);
         macosx_resolver_deinit();
         return 1;
@@ -123,8 +168,8 @@ int main(int argc, char **argv, char **envp)
             // Tail call into the entry point! We're in Linux land!
             "jmpl *%%ebp \n\t"
         : // no outputs
-        : "D" (entry), "a" (envp), "d" (argv+1), "S" (argc-1),
-          "c" (argc*sizeof (char*))
+        : "D" (entry), "a" (envp), "d" (argv+startarg), "S" (argc-startarg),
+          "c" (((argc-startarg)+1)*sizeof (char*))
         : "memory", "cc"
     );
     #elif 0 // !!! FIXME defined(__x86_64__)

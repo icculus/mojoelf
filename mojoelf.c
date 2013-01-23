@@ -56,7 +56,7 @@
 #define errno YOU_NEEDED_TO_INCLUDE_ERRNO_H___BUT_DIDNT
 #endif
 
-#if 0
+#if 1
 #define dbgprintf(x) do {} while (0)
 #else
 #define dbgprintf(x) printf x
