@@ -3,6 +3,8 @@
 //  it, it aligns the stack to 16 bytes thanks to -mstackrealign, and then
 //  calls the actual function in the system library.
 
+#define _DARWIN_USE_64_BIT_INODE 1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -26,6 +28,7 @@
 #include <netdb.h>
 #include <locale.h>
 #include <getopt.h>
+#include <assert.h>
 
 #include "mojoelf.h"
 
@@ -260,7 +263,7 @@ static char *mactrampoline_dcgettext(const char *domain, const char *msgid, int 
     return (char *) msgid;
 } // mactrampoline_dcgettext
 
-const unsigned short **mactrampoline___ctype_b_loc(void)
+static const unsigned short **mactrampoline___ctype_b_loc(void)
 {
     STUBBED("write me");
     STUBBED("this should be thread-local, too");
@@ -269,11 +272,149 @@ const unsigned short **mactrampoline___ctype_b_loc(void)
 
 // mbstate_t is totally different on Mac and Linux.
 //  On Linux, it's always 8 bytes, on Mac, it's a whole big thing.
-int mactrampoline_mbsinit(/*mbstate_t*/uint64_t *mbstate)
+static int mactrampoline_mbsinit(/*mbstate_t*/uint64_t *mbstate)
 {
     STUBBED("write me");
     return (*mbstate == 0);
 } // mactrampoline_mbsinit
+
+
+#ifdef st_atime
+#undef st_atime
+#endif
+#ifdef st_mtime
+#undef st_mtime
+#endif
+#ifdef st_ctime
+#undef st_ctime
+#endif
+
+#ifdef __i386__
+typedef struct linux_stat32
+{
+    uint32_t st_dev;
+    uint32_t st_ino;
+    uint16_t st_mode;
+    uint16_t st_nlink;
+    uint16_t st_uid;
+    uint16_t st_gid;
+    uint32_t st_rdev;
+    uint32_t st_size;
+    uint32_t st_blksize;
+    uint32_t st_blocks;
+    uint32_t st_atime;
+    uint32_t st_atime_nsec;
+    uint32_t st_mtime;
+    uint32_t st_mtime_nsec;
+    uint32_t st_ctime;
+    uint32_t st_ctime_nsec;
+    uint32_t __unused4;
+    uint32_t __unused5;
+} linux_stat32;
+
+typedef struct linux_stat64
+{
+    uint64_t st_dev;
+    uint32_t __pad0;
+    uint32_t __st_ino;
+    uint32_t st_mode;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint64_t st_rdev;
+    uint32_t __pad3;
+    int64_t st_size;
+    uint32_t st_blksize;
+    uint64_t st_blocks;
+    uint32_t st_atime;
+    uint32_t st_atime_nsec;
+    uint32_t st_mtime;
+    uint32_t st_mtime_nsec;
+    uint32_t st_ctime;
+    uint32_t st_ctime_nsec;
+    uint64_t st_ino;
+} linux_stat64;
+
+#elif defined(__x86_64__)
+
+typedef struct linux_stat64
+{
+    uint64_t st_dev;
+    uint64_t st_ino;
+    uint64_t st_nlink;
+    uint32_t st_mode;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint32_t __pad0;
+    uint64_t st_rdev;
+    int64_t st_size;
+    int64_t st_blksize;
+    int64_t st_blocks;	/* Number 512-byte blocks allocated. */
+    uint64_t st_atime;
+    uint64_t st_atime_nsec;
+    uint64_t st_mtime;
+    uint64_t st_mtime_nsec;
+    uint64_t st_ctime;
+    uint64_t st_ctime_nsec;
+    int64_t __unused[3];
+} linux_stat64;
+
+#else
+#error Please define your platform.
+#endif
+
+#ifdef __i386__
+static void mac_stat_to_linux64(struct stat *macstat, linux_stat64 *lnxstat)
+{
+// mode_t is 2 bytes on Mac OS X, but 4 on Linux.
+// dev_t is 4 bytes on Mac OS X, but 8 on Linux.
+
+    lnxstat->st_dev = (uint64_t) macstat->st_dev;
+    lnxstat->__pad0 = 0;
+    lnxstat->__st_ino = (uint32_t) macstat->st_ino;
+    lnxstat->st_mode = (uint32_t) macstat->st_mode;
+    lnxstat->st_nlink = (uint32_t) macstat->st_nlink;
+    lnxstat->st_uid = (uint32_t) macstat->st_uid;
+    lnxstat->st_gid = (uint32_t) macstat->st_gid;
+    lnxstat->st_rdev = (uint64_t) macstat->st_rdev;
+    lnxstat->__pad3 = 0;
+    lnxstat->st_size = (int64_t) macstat->st_size;
+    lnxstat->st_blksize = (uint32_t) macstat->st_blksize;
+    lnxstat->st_blocks = (uint64_t) macstat->st_blocks;
+    lnxstat->st_atime = (uint32_t) macstat->st_atimespec.tv_sec;
+    lnxstat->st_atime_nsec = (uint32_t) macstat->st_atimespec.tv_nsec;
+    lnxstat->st_mtime = (uint32_t) macstat->st_mtimespec.tv_sec;
+    lnxstat->st_mtime_nsec = (uint32_t) macstat->st_mtimespec.tv_nsec;
+    lnxstat->st_ctime = (uint32_t) macstat->st_ctimespec.tv_sec;
+    lnxstat->st_ctime_nsec = (uint32_t) macstat->st_ctimespec.tv_nsec;
+    lnxstat->st_ino = (uint64_t) macstat->st_ino;
+}
+
+#define XSTAT_IMPL(fn, arg) \
+    struct stat macstat; \
+    assert(ver == 3); \
+    if (fn(arg, &macstat) == -1) { \
+        STUBBED("map errno"); \
+        return -1; \
+    } \
+    mac_stat_to_linux64(&macstat, lnxstat); \
+    return 0;
+
+static int mactrampoline___xstat64(int ver, const char *path, linux_stat64 *lnxstat)
+{
+    XSTAT_IMPL(stat, path);
+} // mactrampoline___fxstat64
+
+static int mactrampoline___lxstat64(int ver, const char *path, linux_stat64 *lnxstat)
+{
+    XSTAT_IMPL(lstat, path);
+} // mactrampoline___fxstat64
+
+static int mactrampoline___fxstat64(int ver, int fd, linux_stat64 *lnxstat)
+{
+    XSTAT_IMPL(fstat, fd);
+} // mactrampoline___fxstat64
+#endif
 
 
 typedef enum

@@ -62,7 +62,11 @@ MACTRAMPOLINE_OVERRIDE(__stack_chk_fail)
 MACTRAMPOLINE_OVERRIDE(__fpending)
 MACTRAMPOLINE_OVERRIDE(error)
 
-
+#ifdef __i386__
+MACTRAMPOLINE_OVERRIDE(__xstat64)
+MACTRAMPOLINE_OVERRIDE(__lxstat64)
+MACTRAMPOLINE_OVERRIDE(__fxstat64)
+#endif
 
 // !!! FIXME: mode_t is 2 bytes on Mac OS X, but 4 on Linux.
 //MACTRAMPOLINE(DBM*,dbm_open,(const char *a, int b, mode_t c),(a,b,c),return)
