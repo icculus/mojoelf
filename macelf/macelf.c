@@ -4,6 +4,7 @@
 #include "mojoelf.h"
 #include "hashtable.h"
 
+static int run_with_missing_symbols = 0;
 static int report_missing_symbols = 0;
 static int symbols_missing = 0;
 
@@ -17,8 +18,10 @@ void *macosx_resolver(const char *sym)
     if (!hash_find(resolver_symbols, sym, &ptr))
     {
         if (report_missing_symbols)
-        {
             printf("Missing symbol: %s\n", sym);
+
+        if ((report_missing_symbols) || (run_with_missing_symbols))
+        {
             symbols_missing++;
             if (strcmp(sym, "__gmon_start__") == 0)
                 return NULL;  // !!! FIXME: this is just to prevent crash, as MOJOELF_dlopen() calls this before returning.
@@ -83,6 +86,12 @@ int main(int argc, char **argv, char **envp)
             continue;
         } // if
 
+        else if (strcmp(arg, "--run-with-missing-symbols") == 0)
+        {
+            run_with_missing_symbols = 1;
+            continue;
+        } // if
+
         else if (strncmp(arg, "--", 2) == 0)
         {
             fprintf(stderr, "WARNING: Unknown command line option '%s'\n", arg);
@@ -119,7 +128,14 @@ int main(int argc, char **argv, char **envp)
     if (report_missing_symbols)
     {
         printf("%d symbols missing\n", symbols_missing);
-        return 1;
+        if (!run_with_missing_symbols)
+            return 1;
+    } // if
+
+    if ((run_with_missing_symbols) && (symbols_missing))
+    {
+        fprintf(stderr, "\n\nWARNING: You are missing symbols but running anyhow!\n");
+        fprintf(stderr, "WARNING: This might lead to crashes!\n\n");
     } // if
 
     EntryFn entry = (EntryFn) MOJOELF_getentry(lib);
