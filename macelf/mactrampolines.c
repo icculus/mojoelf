@@ -417,6 +417,9 @@ static int mactrampoline___fxstat64(int ver, int fd, linux_stat64 *lnxstat)
 #endif
 
 
+static char *mactrampoline___strdup(const char *str) { return strdup(str); }
+
+
 typedef enum
 {
     LINUX_LC_CTYPE = 0,
