@@ -579,5 +579,17 @@ int build_trampolines(void)
     ;
 } // build_trampolines
 
+
+void missing_symbol_called(const char *missing_symbol)
+{
+    fflush(stdout);
+    fflush(stderr);
+    fprintf(stderr, "\n\nMissing symbol '%s' called!\n", missing_symbol);
+    fprintf(stderr, "Aborting.\n\n\n");
+    //STUBBED("output backtrace");
+    fflush(stderr);
+    _exit(1);
+} // missing_symbol_called
+
 // end of mactrampolines.c ...
 

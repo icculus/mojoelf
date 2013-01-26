@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include "mojoelf.h"
 #include "hashtable.h"
 
@@ -12,17 +14,7 @@ char *program_invocation_name = NULL;
 
 static HashTable *resolver_symbols = NULL;
 
-static void missing_symbol_called(void)
-{
-    fflush(stdout);
-    fflush(stderr);
-    fprintf(stderr, "\n\nMissing symbol called!\n");
-    fprintf(stderr, "Aborting.\n\n\n");
-    //STUBBED("output backtrace");
-    fflush(stderr);
-    _exit(1);
-} // missing_symbol_called
-
+void missing_symbol_called(const char *missing_symbol);
 
 void *macosx_resolver(const char *sym)
 {
@@ -37,7 +29,29 @@ void *macosx_resolver(const char *sym)
             symbols_missing++;
             if (strcmp(sym, "__gmon_start__") == 0)
                 return NULL;  // !!! FIXME: this is just to prevent crash, as MOJOELF_dlopen() calls this before returning.
-            return ((void *) missing_symbol_called);
+
+            #ifdef __i386__
+            char *symcopy = strdup(sym);
+            void *trampoline = valloc(16);  // !!! FIXME: pack these into one page.
+            char *ptr = (char *) trampoline;
+            *(ptr++) = 0x55;  // push %ebp
+            *(ptr++) = 0x89;  // mov %esp,%ebp
+            *(ptr++) = 0xE5;  // mov %esp,%ebp
+            *(ptr++) = 0x68;  // pushl immediate
+            memcpy(ptr, &symcopy, sizeof (char *));
+            ptr += sizeof (char *);
+            *(ptr++) = 0xB8;  // movl immediate to %%eax
+            const void *fn = missing_symbol_called;
+            memcpy(ptr, &fn, sizeof (void *));
+            ptr += sizeof (void *);
+            *(ptr++) = 0xFF;  // call absolute in %%eax.
+            *(ptr++) = 0xD0;
+            mprotect(trampoline, getpagesize(), PROT_READ | PROT_WRITE | PROT_EXEC);
+            #else
+            #error write me.
+            #endif
+
+            return ((void *) trampoline);
         } // if
     } // if
 
