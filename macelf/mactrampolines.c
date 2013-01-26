@@ -128,12 +128,17 @@ static void mactrampoline___stack_chk_fail(void)
     _exit(1);
 } // mactrampoline___stack_chk_fail
 
-
 // Just use the "locked" versions for now, since the unlocked don't exist.
 static int mactrampoline_fputs_unlocked(const char *str, FILE *io)
 {
     return fputs(str, io);
 } // mactrampoline_fputs_unlocked
+
+// Just use the "locked" versions for now, since the unlocked don't exist.
+static size_t mactrampoline_fwrite_unlocked(const void *ptr, size_t size, size_t num, FILE *io)
+{
+    return fwrite(ptr, size, num, io);
+} // mactrampoline_fwrite_unlocked
 
 static size_t mactrampoline___fpending(FILE *io)
 {
@@ -490,6 +495,162 @@ static int mactrampoline_ioctl(int fd, int req, ...)
     fprintf(stderr, "WARNING: unhandled ioctl(%d, %d, ...) called!\n", fd, req);
     return -1;
 } // mactrampoline_ioctl
+
+
+typedef struct LinuxDirEnt32
+{
+    uint32_t d_ino;
+    uint32_t d_off;
+    uint16_t d_reclen;
+    uint8_t d_type;
+    char d_name[256];
+} LinuxDirEnt32;
+
+typedef struct LinuxDirEnt64
+{
+    uint64_t d_ino;
+    uint64_t d_off;
+    uint16_t d_reclen;
+    uint8_t d_type;
+    char d_name[256];
+} LinuxDirEnt64;
+
+typedef struct LinuxDIR
+{
+    DIR *macdir;
+    union
+    {
+        LinuxDirEnt32 dent32;
+        LinuxDirEnt64 dent64;
+    };
+} LinuxDIR;
+
+static LinuxDIR *mactrampoline_opendir(const char *path)
+{
+    LinuxDIR *retval = NULL;
+    DIR *macdir = opendir(path);
+    if (macdir)
+    {
+        retval = (LinuxDIR *) malloc(sizeof (LinuxDIR));
+        if (retval == NULL)
+            closedir(macdir);
+        else
+        {
+            memset(retval, '\0', sizeof (*retval));
+            retval->macdir = macdir;
+        } // else
+    } // if
+
+    return retval;
+} // mactrampoline_opendir
+
+static void mactrampoline_rewinddir(LinuxDIR *dir)
+{
+    rewinddir(dir->macdir);
+} // mactrampoline_rewinddir
+
+static void mactrampoline_seekdir(LinuxDIR *dir, long pos)
+{
+    seekdir(dir->macdir, pos);
+} // mactrampoline_seekdir
+
+static long mactrampoline_telldir(LinuxDIR *dir)
+{
+    return telldir(dir->macdir);
+} // mactrampoline_telldir
+
+static int mactrampoline_readdir64_r(LinuxDIR *dir, LinuxDirEnt64 *lnxdent, LinuxDirEnt64 **result)
+{
+    struct dirent macdent;
+    struct dirent *macresult = NULL;
+
+    memset(&macdent, '\0', sizeof (macdent));
+    const int rc = readdir_r(dir->macdir, &macdent, &macresult);
+
+    if (!macresult)
+        *result = NULL;
+    else
+    {
+        assert(macresult == &macdent);
+        *result = lnxdent;
+        lnxdent->d_ino = (uint64_t) macdent.d_ino;
+        lnxdent->d_off = (uint64_t) macdent.d_seekoff;
+        lnxdent->d_reclen = (uint16_t) macdent.d_reclen;
+        lnxdent->d_type = (uint8_t) macdent.d_type;  // these all match up.
+
+        if ((macdent.d_namlen+1) >= sizeof (lnxdent->d_name))
+            STUBBED("What should we do here?");
+        snprintf(lnxdent->d_name, sizeof (lnxdent->d_name), "%s", macdent.d_name);
+
+        *result = lnxdent;
+    } // else
+
+    return rc;
+} // mactrampoline_readdir64_r
+
+static LinuxDirEnt64 *mactrampoline_readdir64(LinuxDIR *dir)
+{
+    LinuxDirEnt64 *retval = NULL;
+    return (mactrampoline_readdir64_r(dir, &dir->dent64, &retval) == -1) ? NULL : retval;
+} // mactrampoline_readdir64
+
+
+#ifdef __i386__
+static int mactrampoline_readdir_r(LinuxDIR *dir, LinuxDirEnt32 *lnxdent, LinuxDirEnt32 **result)
+{
+    struct dirent macdent;
+    struct dirent *macresult = NULL;
+
+    memset(&macdent, '\0', sizeof (macdent));
+    const int rc = readdir_r(dir->macdir, &macdent, &macresult);
+
+    if (!macresult)
+        *result = NULL;
+    else
+    {
+        assert(macresult == &macdent);
+        *result = lnxdent;
+        lnxdent->d_ino = (uint32_t) macdent.d_ino;
+        lnxdent->d_off = (uint32_t) macdent.d_seekoff;
+        lnxdent->d_reclen = (uint16_t) macdent.d_reclen;
+        lnxdent->d_type = (uint8_t) macdent.d_type;  // these all match up.
+
+        if ((macdent.d_namlen+1) >= sizeof (lnxdent->d_name))
+            STUBBED("What should we do here?");
+        snprintf(lnxdent->d_name, sizeof (lnxdent->d_name), "%s", macdent.d_name);
+
+        *result = lnxdent;
+    } // else
+
+    return rc;
+} // mactrampoline_readdir_r
+
+static LinuxDirEnt32 *mactrampoline_readdir(LinuxDIR *dir)
+{
+    LinuxDirEnt32 *retval = NULL;
+    return (mactrampoline_readdir_r(dir, &dir->dent32, &retval) == -1) ? NULL : retval;
+} // mactrampoline_readdir
+
+#else
+
+static int mactrampoline_readdir_r(LinuxDIR *dir, LinuxDirEnt64 *lnxdent, LinuxDirEnt64 **result)
+{
+    return mactrampoline_readdir64_r(dir, lnxdent, result);
+} // mactrampoline_readdir_r
+
+static LinuxDirEnt64 *mactrampoline_readdir(LinuxDIR *dir)
+{
+    return mactrampoline_readdir64(dir);
+} // mactrampoline_readdir
+#endif
+
+static int mactrampoline_closedir(LinuxDIR *dir)
+{
+    const int rc = closedir(dir->macdir);
+    if (rc == 0)
+        free(dir);
+    return rc;
+} // mactrampoline_closedir
 
 
 typedef enum
