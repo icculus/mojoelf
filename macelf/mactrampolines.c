@@ -484,6 +484,14 @@ static char *mactrampoline_dlerror(void)
 } // mactrampoline_dlerror
 
 
+static int mactrampoline_ioctl(int fd, int req, ...)
+{
+    STUBBED("this is going to need a bunch of complexity");
+    fprintf(stderr, "WARNING: unhandled ioctl(%d, %d, ...) called!\n", fd, req);
+    return -1;
+} // mactrampoline_ioctl
+
+
 typedef enum
 {
     LINUX_O_RDONLY      =00,
