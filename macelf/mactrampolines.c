@@ -73,6 +73,7 @@ extern char **environ;  // !!! FIXME: really? This isn't in a header?
 // Wrap Linux's errno (Which is actually __errno_location()).
 static int *mactrampoline___errno_location(void)
 {
+    STUBBED("convert errno from Mac values to Linux");
     return &errno;
 } // mactrampoline___errno_location
 
@@ -394,7 +395,6 @@ static void mac_stat_to_linux64(struct stat *macstat, linux_stat64 *lnxstat)
     struct stat macstat; \
     assert(ver == 3); \
     if (fn(arg, &macstat) == -1) { \
-        STUBBED("map errno"); \
         return -1; \
     } \
     mac_stat_to_linux64(&macstat, lnxstat); \
