@@ -820,7 +820,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     if ((sym == 0) || (*symstr == '\0'))
         /* no-op */;  // we're done already.
 
-    else if (symbol->st_shndx == SHN_UNDEF)
+    else
     {
         dbgprintf(("Resolving '%s' ...\n", symstr));
 
