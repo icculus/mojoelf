@@ -105,7 +105,13 @@ int main(int argc, char **argv, char **envp)
     for (i = 1; i < argc; i++)
     {
         const char *arg = argv[i];
-        if (strcmp(arg, "--report-missing-symbols") == 0)
+        if (strcmp(arg, "--help") == 0)
+        {
+            i = argc;   // this forces the usage text. Lame way to do this.
+            break;
+        } // if
+
+        else if (strcmp(arg, "--report-missing-symbols") == 0)
         {
             report_missing_symbols = 1;
             continue;
@@ -131,6 +137,11 @@ int main(int argc, char **argv, char **envp)
     if (argc-startarg == 0)
     {
         fprintf(stderr, "USAGE: %s [...opts...] <ELFfile> [...cmdline...]\n", argv[0]);
+        fprintf(stderr, "    Valid options:\n");
+        fprintf(stderr, "       --help\n");
+        fprintf(stderr, "       --report-missing-symbols\n");
+        fprintf(stderr, "       --run-with-missing-symbols\n");
+        fprintf(stderr, "\n");
         return 1;
     } // if
 
