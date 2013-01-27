@@ -29,6 +29,7 @@
 #include <locale.h>
 #include <getopt.h>
 #include <assert.h>
+#include <utime.h>
 
 #include "mojoelf.h"
 
@@ -120,6 +121,12 @@ static int mactrampoline___printf_chk(int flag, const char *fmt, ...)
     va_end(ap);
     return retval;
 } // mactrampoline___printf_chk
+
+static char *mactrampoline___strcat_chk(char *dst, const char *src, size_t len)
+{
+    STUBBED("check flag (and stack!)");
+    return strcat(dst, src);
+} // __strcat_chk
 
 static void mactrampoline___stack_chk_fail(void)
 {
@@ -727,6 +734,28 @@ static int mactrampoline_open(const char *path, int flags, ...)
 
     return open(path, macflags, mode);
 } // mactrampoline_open
+
+static int mactrampoline_open64(const char *path, int flags, ...)
+{
+    flags |= LINUX_O_LARGEFILE;
+
+    // Have to use varargs if O_CREAT, grumble grumble.
+    if (flags & LINUX_O_CREAT)
+    {
+        va_list ap;
+        va_start(ap, flags);
+        const mode_t mode = (mode_t) va_arg(ap, uint32_t);  // mode_t is 4 bytes on Linux, 2 on Mac.
+        va_end(ap);
+        return mactrampoline_open(path, flags, mode);
+    } // if
+
+    return mactrampoline_open(path, flags);
+} // mactrampoline_open64
+
+static FILE *mactrampoline_fopen64(const char *fname, const char *mode)
+{
+    return fopen(fname, mode);  // I think this is always 64-bit clean on Mac?
+} // mactrampoline_fopen64
 
 
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
