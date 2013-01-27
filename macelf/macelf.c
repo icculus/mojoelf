@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <assert.h>
+
 #include "mojoelf.h"
 #include "hashtable.h"
 
@@ -51,8 +53,21 @@ void *macosx_resolver(const char *sym)
                 return NULL;  // !!! FIXME: this is just to prevent crash, as MOJOELF_dlopen() calls this before returning.
 
             #ifdef __i386__
+            static void *page = NULL;
+            static int pageused = 0;
+            static int pagesize = 0;
+            if (pagesize == 0)
+                pagesize = getpagesize();
+
+            if ((!page) || ((pagesize - pageused) < 16))
+            {
+                page = valloc(pagesize);
+                mprotect(page, pagesize, PROT_READ | PROT_WRITE | PROT_EXEC);
+                pageused = 0;
+            } // if
+
             char *symcopy = strdup(sym);
-            void *trampoline = valloc(16);  // !!! FIXME: pack these into one page.
+            void *trampoline = page + pageused;
             char *ptr = (char *) trampoline;
             *(ptr++) = 0x55;  // push %ebp
             *(ptr++) = 0x89;  // mov %esp,%ebp
@@ -66,7 +81,9 @@ void *macosx_resolver(const char *sym)
             ptr += sizeof (void *);
             *(ptr++) = 0xFF;  // call absolute in %%eax.
             *(ptr++) = 0xD0;
-            mprotect(trampoline, getpagesize(), PROT_READ | PROT_WRITE | PROT_EXEC);
+            const int trampoline_len = (int) (ptr - ((char *) trampoline));
+            assert(trampoline_len <= 16);
+            pageused += trampoline_len;
             #else
             #error write me.
             #endif
