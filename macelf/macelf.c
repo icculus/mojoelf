@@ -9,6 +9,7 @@
 static int run_with_missing_symbols = 0;
 static int report_missing_symbols = 0;
 static int symbols_missing = 0;
+static int dependencies_missing = 0;
 
 char *program_invocation_name = NULL;
 
@@ -20,6 +21,18 @@ int macosx_loader(const char *soname)
 {
     if (strcmp(soname, "libc.so.6") == 0)
         return 1;  // we provide glibc entry points.
+    else
+    {
+        if (report_missing_symbols)
+            printf("Missing dependency: %s\n", soname);
+
+        if ((report_missing_symbols) || (run_with_missing_symbols))
+        {
+            dependencies_missing++;
+            return 1;  // just say we offer it, even though we don't.
+        } // if
+    } // else
+
     return 0;
 } // macosx_loader
 
@@ -168,15 +181,17 @@ int main(int argc, char **argv, char **envp)
         return 1;
     } // if
 
-    if (report_missing_symbols)
+    if ((symbols_missing) || (dependencies_missing))
     {
-        printf("%d symbols missing\n", symbols_missing);
+        if (report_missing_symbols)
+        {
+            printf("%d dependencies missing, %d symbols missing.\n",
+                   dependencies_missing, symbols_missing);
+        } // if
+
         if (!run_with_missing_symbols)
             return 1;
-    } // if
 
-    if ((run_with_missing_symbols) && (symbols_missing))
-    {
         fprintf(stderr, "\n\nWARNING: You are missing symbols but running anyhow!\n");
         fprintf(stderr, "WARNING: This might lead to crashes!\n\n");
     } // if
