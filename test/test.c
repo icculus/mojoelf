@@ -46,7 +46,7 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++)
     {
         printf("opening '%s'...\n", argv[i]);
-        lib = MOJOELF_dlopen_file(argv[i], test_resolver);
+        lib = MOJOELF_dlopen_file(argv[i], NULL, test_resolver);
         if (lib == NULL)
             printf("failed '%s'! (%s)\n", argv[i], MOJOELF_dlerror());
         else

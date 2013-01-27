@@ -16,6 +16,13 @@ static HashTable *resolver_symbols = NULL;
 
 void missing_symbol_called(const char *missing_symbol);
 
+int macosx_loader(const char *soname)
+{
+    if (strcmp(soname, "libc.so.6") == 0)
+        return 1;  // we provide glibc entry points.
+    return 0;
+} // macosx_loader
+
 void *macosx_resolver(const char *sym)
 {
     const void *ptr = NULL;
@@ -153,7 +160,7 @@ int main(int argc, char **argv, char **envp)
 
     elf = argv[startarg];
     program_invocation_name = elf;
-    void *lib = MOJOELF_dlopen_file(argv[startarg], macosx_resolver);
+    void *lib = MOJOELF_dlopen_file(argv[startarg], macosx_loader, macosx_resolver);
     if (lib == NULL)
     {
         fprintf(stderr, "Failed to load %s: %s\n", elf, MOJOELF_dlerror());

@@ -20,8 +20,8 @@ To use this nonsense:
 - Your calling code should #include mojoelf.h ...
 - Put your ELF library in memory, and call MOJOELF_dlopen_mem() with the
   address of the memory buffer, the size of the buffer, and (optionally),
-  a callback that handles symbol resolution (this can be NULL). Details on
-  the resolver callback are at the end of this document.
+  callbacks that handle symbol resolution (they can be NULL). Details on
+  the resolver callbacks are at the end of this document.
 - If MOJOELF_dlopen_mem() returns non-NULL, the library is ready to use. If
   it returns NULL, there was a problem (MOJOELF_dlerror() will give you a
   human-readable error message). On success, you can free your buffer; we
@@ -41,6 +41,8 @@ To use this nonsense:
   resources. All pointers returned by MOJOELF_dlsym() for this library are
   invalid after this call.
 
+Callbacks:
+
 The resolver callback looks like this:
 
       extern int my_function(int argument);
@@ -55,6 +57,24 @@ The resolver callback looks like this:
 
 The callback gets first shot at supplying addresses. Failing that, we can
 optionally ask the system for symbols.
+
+
+The "loader" callback doesn't necessarily load anything. All it does it tell
+MojoELF that it's claiming a specific dependency. For example, if you want to
+load an ELF that depends on libFoo.so.3, but you plan to override this
+library without it actually existing, you can write a callback like this:
+
+    int my_loader(const char *soname)
+    {
+        return (strcmp(soname, "libFoo.so.3") == 0);
+    }
+
+...and MojoELF will not try to load libFoo itself, and assumes you will
+provide any needed symbols from it via your resolver callback.
+
+Note that your loader can be way more complex...it could actually _load_
+something, for example, but in many cases, this is all that's needed.
+
 
 - If you have problems: ask Ryan.
 

@@ -405,6 +405,7 @@ typedef struct ElfContext
     const ElfSymTable *symtab;  // the symbol table.
     int symtabcount;  // entries in the symbol table.
     const ElfDynTable *dyntabs[32];  // indexable pointers to dynamic tables.
+    MOJOELF_LoaderCallback loader;    // loader callback.
     MOJOELF_SymbolCallback resolver;  // resolver callback.
 } ElfContext;
 
@@ -756,23 +757,27 @@ static int walk_dynamic_table(ElfContext *ctx)
 //  loaded and you can supply all the symbols yourself.
 static int load_external_dependencies(ElfContext *ctx)
 {
-#if MOJOELF_ALLOW_SYSTEM_RESOLVE
-    const int dlopens_count = ctx->retval->dlopens_count;
     const ElfDynTable *dyntab = ctx->dyntab;
     const int dyntabcount = ctx->dyntabcount;
+    int dlopens_current = 0;
+    int dlopens_count = 0;
     int i;
 
-    if (dlopens_count == 0)
+    if (ctx->retval->dlopens_count == 0)
         return 1;  // nothing to do.
 
     // !!! FIXME: We currently can't give accurate results if there's an rpath.
     if (ctx->dyntabs[DT_RPATH] != NULL)
         DLOPEN_FAIL("DT_RPATH isn't supported at the moment");
 
-    ctx->retval->dlopens_count = 0;
+    (void) dlopens_current;
+
+#if MOJOELF_ALLOW_SYSTEM_RESOLVE
     ctx->retval->dlopens = (void **) Malloc(dlopens_count * sizeof (void *));
     if (ctx->retval->dlopens == NULL)
         return 0;
+    memset(ctx->retval->dlopens, '\0', dlopens_count * sizeof (void *));
+#endif
 
     // Find the libraries to load.
     for (i = 0; i < dyntabcount; i++, dyntab++)
@@ -785,12 +790,32 @@ static int load_external_dependencies(ElfContext *ctx)
             else
             {
                 const char *str = ctx->strtab + offset;
-                dbgprintf(("dlopen()'ing \"%s\" ...\n", str));
-                void *lib = dlopen(str, RTLD_NOW);
-                if (lib == NULL)
+                int resolved = 0;
+
+                if (!resolved)
+                {
+                    dbgprintf(("asking loader for \"%s\" ...\n", str));
+                    resolved = (ctx->loader(str) != 0);
+                } // if
+
+                #if MOJOELF_ALLOW_SYSTEM_RESOLVE
+                if (!resolved)
+                {
+                    dbgprintf(("dlopen()'ing \"%s\" ...\n", str));
+                    void *lib = dlopen(str, RTLD_NOW);
+                    ctx->retval->dlopens[dlopens_current++] = lib;
+                } // if
+                #endif
+
+                if (!resolved)
+                {
+                    // !!! FIXME: do further MOJOELF_dlopen()'ing.
+                } // if
+
+                if (!resolved)
                     DLOPEN_FAIL("Couldn't load dependency");
-                ctx->retval->dlopens[ctx->retval->dlopens_count++] = lib;
-                if (ctx->retval->dlopens_count == dlopens_count)
+
+                if (++dlopens_count >= ctx->retval->dlopens_count)
                     return 1;  // done!
             } // else
         } // if
@@ -798,9 +823,6 @@ static int load_external_dependencies(ElfContext *ctx)
 
     assert(0);
     DLOPEN_FAIL("Bug: didn't see as many DT_NEEDED on second pass");
-#endif
-
-    return 1;
 } // load_external_dependencies
 
 
@@ -1059,9 +1081,11 @@ static int call_so_init(ElfContext *ctx)
     return 1;
 } // call_so_init
 
+static int noop_loader(const char *soname) { return 0; }
 static void *noop_resolver(const char *sym) { return NULL; }
 
 void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
+                         MOJOELF_LoaderCallback loader,
                          MOJOELF_SymbolCallback resolver)
 {
     ElfContext ctx;
@@ -1073,6 +1097,7 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
     Memzero(&ctx, sizeof (ElfContext));
     ctx.buf = (const uint8 *) buf;
     ctx.buflen = (size_t) buflen;
+    ctx.loader = loader ? loader : noop_loader;
     ctx.resolver = resolver ? resolver : noop_resolver;
     ctx.header = (const ElfHeader *) buf;
     ctx.retval = (ElfHandle *) Malloc(sizeof (ElfHandle));
@@ -1165,7 +1190,8 @@ void MOJOELF_dlclose(void *lib)
 
 
 #if MOJOELF_SUPPORT_DLOPEN_FILE
-void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver)
+void *MOJOELF_dlopen_file(const char *fname, MOJOELF_LoaderCallback loader,
+                          MOJOELF_SymbolCallback resolver)
 {
     void *retval = NULL;
     struct stat statbuf;
@@ -1184,7 +1210,7 @@ void *MOJOELF_dlopen_file(const char *fname, MOJOELF_SymbolCallback resolver)
     {
         close(fd);
         fd = -1;
-        retval = MOJOELF_dlopen_mem(buf, statbuf.st_size, resolver);
+        retval = MOJOELF_dlopen_mem(buf, statbuf.st_size, loader, resolver);
     } // else
 
     if (fd != -1)
