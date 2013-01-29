@@ -470,13 +470,12 @@ static char *mactrampoline_setlocale(int category, const char *locale)
 // Obviously we want to map dlopen and friends through MojoELF. We can't let
 //  you talk to Mach-O binaries directly in any case, due to calling
 //  convention differences.
-void *macosx_resolver(const char *sym);  // !!! FIXME: booo
-int macosx_loader(const char *soname);  // !!! FIXME: booo
+extern const MOJOELF_Callbacks mojoelf_callbacks;  // !!! FIXME: booo
 static void *mactrampoline_dlopen(const char *fname, int flags)
 {
     STUBBED("trap a few libs like SDL, OpenGL, X11, OpenAL...");
     STUBBED("flags are ignored");
-    return MOJOELF_dlopen_file(fname, macosx_loader, macosx_resolver);
+    return MOJOELF_dlopen_file(fname, &mojoelf_callbacks);
 } // mactrampoline_dlopen
 
 static void *mactrampoline_dlsym(void *lib, const char *sym)

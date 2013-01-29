@@ -39,10 +39,6 @@
 #define MOJOELF_SUPPORT_DLOPEN_FILE 1
 #endif
 
-#ifndef MOJOELF_ALLOW_SYSTEM_RESOLVE
-#define MOJOELF_ALLOW_SYSTEM_RESOLVE 1
-#endif
-
 #ifndef MOJOELF_REDUCE_LIBC_DEPENDENCIES
 #define MOJOELF_REDUCE_LIBC_DEPENDENCIES 0
 #endif
@@ -170,6 +166,7 @@ typedef uintptr_t uintptr;
 #define DT_INIT_ARRAYSZ 27
 #define DT_FINI_ARRAY 25
 #define DT_FINI_ARRAYSZ 28
+#define DT_RUNPATH 29
 #define SHT_NOBITS 8
 #define SHT_DYNSYM 11
 #define SHN_UNDEF 0
@@ -283,9 +280,8 @@ typedef struct ElfHandle  // this is what MOJOELF_dlopen_*() returns.
     void *entry;
     void *fini;
     int dlopens_count;
-    #if MOJOELF_ALLOW_SYSTEM_RESOLVE
     void **dlopens;
-    #endif
+    MOJOELF_UnloaderCallback unloader;  // unloader callback.
 } ElfHandle;
 
 
@@ -406,7 +402,8 @@ typedef struct ElfContext
     int symtabcount;  // entries in the symbol table.
     const ElfDynTable *dyntabs[32];  // indexable pointers to dynamic tables.
     MOJOELF_LoaderCallback loader;    // loader callback.
-    MOJOELF_SymbolCallback resolver;  // resolver callback.
+    MOJOELF_UnloaderCallback unloader;  // unloader callback.
+    MOJOELF_ResolverCallback resolver;  // resolver callback.
 } ElfContext;
 
 #define DLOPEN_FAIL(err) do { set_dlerror(err); return 0; } while (0)
@@ -751,33 +748,39 @@ static int walk_dynamic_table(ElfContext *ctx)
 } // walk_dynamic_table
 
 
-// We might need to load symbols in other libraries. Comically, we
-//  use dlopen() and dlsym() for this, but you can forbid this, in
-//  case you know all the external libraries you want are already
-//  loaded and you can supply all the symbols yourself.
+// We might need to load symbols in other libraries. The app-supplied
+//  callbacks will be given a chance to handle symbol resolution here.
 static int load_external_dependencies(ElfContext *ctx)
 {
     const ElfDynTable *dyntab = ctx->dyntab;
     const int dyntabcount = ctx->dyntabcount;
-    int dlopens_current = 0;
+    const char *rpath = NULL;
+    const char *runpath = NULL;
     int dlopens_count = 0;
     int i;
+
+    if (ctx->dyntabs[DT_RPATH] != NULL)
+    {
+        const size_t offset = ctx->dyntabs[DT_RPATH]->d_un.d_val;
+        if (offset >= ctx->strtablen)
+            DLOPEN_FAIL("Bogus DT_RPATH string");
+        rpath = ctx->strtab + offset;
+    } // if
+
+    if (ctx->dyntabs[DT_RUNPATH] != NULL)
+    {
+        const size_t offset = ctx->dyntabs[DT_RUNPATH]->d_un.d_val;
+        if (offset >= ctx->strtablen)
+            DLOPEN_FAIL("Bogus DT_RUNPATH string");
+        runpath = ctx->strtab + offset;
+    } // if
 
     if (ctx->retval->dlopens_count == 0)
         return 1;  // nothing to do.
 
-    // !!! FIXME: We currently can't give accurate results if there's an rpath.
-    if (ctx->dyntabs[DT_RPATH] != NULL)
-        DLOPEN_FAIL("DT_RPATH isn't supported at the moment");
-
-    (void) dlopens_current;
-
-#if MOJOELF_ALLOW_SYSTEM_RESOLVE
-    ctx->retval->dlopens = (void **) Malloc(dlopens_count * sizeof (void *));
+    ctx->retval->dlopens = (void **) Malloc(ctx->retval->dlopens_count * sizeof (void *));
     if (ctx->retval->dlopens == NULL)
         return 0;
-    memset(ctx->retval->dlopens, '\0', dlopens_count * sizeof (void *));
-#endif
 
     // Find the libraries to load.
     for (i = 0; i < dyntabcount; i++, dyntab++)
@@ -790,32 +793,15 @@ static int load_external_dependencies(ElfContext *ctx)
             else
             {
                 const char *str = ctx->strtab + offset;
-                int resolved = 0;
+                void *handle = NULL;
 
-                if (!resolved)
-                {
-                    dbgprintf(("asking loader for \"%s\" ...\n", str));
-                    resolved = (ctx->loader(str) != 0);
-                } // if
-
-                #if MOJOELF_ALLOW_SYSTEM_RESOLVE
-                if (!resolved)
-                {
-                    dbgprintf(("dlopen()'ing \"%s\" ...\n", str));
-                    void *lib = dlopen(str, RTLD_NOW);
-                    ctx->retval->dlopens[dlopens_current++] = lib;
-                } // if
-                #endif
-
-                if (!resolved)
-                {
-                    // !!! FIXME: do further MOJOELF_dlopen()'ing.
-                } // if
-
-                if (!resolved)
+                dbgprintf(("asking loader for \"%s\" (rpath \"%s\", runpath \"%s\") ...\n", str, rpath, runpath));
+                handle = ctx->loader(str, rpath, runpath);
+                if (!handle)
                     DLOPEN_FAIL("Couldn't load dependency");
 
-                if (++dlopens_count >= ctx->retval->dlopens_count)
+                ctx->retval->dlopens[dlopens_count++] = handle;
+                if (dlopens_count >= ctx->retval->dlopens_count)
                     return 1;  // done!
             } // else
         } // if
@@ -846,22 +832,18 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     {
         dbgprintf(("Resolving '%s' ...\n", symstr));
 
-        addr = ctx->resolver(symstr);  // give caller's resolver first shot.
-
-        #if MOJOELF_ALLOW_SYSTEM_RESOLVE
-        if (addr == NULL)
-        {
-            int i;
-            addr = dlsym(NULL, symstr);
-            for (i = 0; (!addr) && (i < ctx->retval->dlopens_count); i++)
-                addr = dlsym(ctx->retval->dlopens[i], symstr);
-        }
-        #endif
+        int i;
+        for (i = 0; (addr == NULL) && (i < ctx->retval->dlopens_count); i++)
+            addr = ctx->resolver(ctx->retval->dlopens[i], symstr);
 
         if (addr == NULL)
         {
-            if (ELF_ST_BIND(symbol->st_info) != STB_WEAK)
-                DLOPEN_FAIL("Couldn't resolve symbol");
+            addr = ctx->resolver(NULL, symstr);  // last try.
+            if (addr == NULL)
+            {
+                if (ELF_ST_BIND(symbol->st_info) != STB_WEAK)
+                    DLOPEN_FAIL("Couldn't resolve symbol");
+            } // if
         } // if
 
         dbgprintf(("Resolved '%s' to %p ...\n", symstr, addr));
@@ -1081,30 +1063,39 @@ static int call_so_init(ElfContext *ctx)
     return 1;
 } // call_so_init
 
-static int noop_loader(const char *soname) { return 0; }
-static void *noop_resolver(const char *sym) { return NULL; }
+static void *noop_loader(const char *soname, const char *rpath, const char *runpath) { return NULL; }
+static void *noop_resolver(void *handle, const char *sym) { return NULL; }
+static void noop_unloader(void *handle) {}
 
 void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
-                         MOJOELF_LoaderCallback loader,
-                         MOJOELF_SymbolCallback resolver)
+                         const MOJOELF_Callbacks *callbacks)
 {
+    static const MOJOELF_Callbacks nullcb = { NULL, NULL, NULL };
+    ElfHandle *handle = NULL;
     ElfContext ctx;
 
     assert(sizeof (ElfHeader) == MOJOELF_SIZEOF_ELF_HEADER);
     assert(sizeof (ElfProgram) == MOJOELF_SIZEOF_PROGRAM_HEADER);
     assert(sizeof (ElfSection) == MOJOELF_SIZEOF_SECTION_HEADER);
 
+    handle = (ElfHandle *) Malloc(sizeof (ElfHandle));
+    if (handle == NULL)
+        return NULL;
+
+    if (callbacks == NULL)
+        callbacks = &nullcb;
+
     Memzero(&ctx, sizeof (ElfContext));
     ctx.buf = (const uint8 *) buf;
     ctx.buflen = (size_t) buflen;
-    ctx.loader = loader ? loader : noop_loader;
-    ctx.resolver = resolver ? resolver : noop_resolver;
+    ctx.loader = callbacks->loader ? callbacks->loader : noop_loader;
+    ctx.resolver = callbacks->resolver ? callbacks->resolver : noop_resolver;
+    ctx.unloader = callbacks->unloader ? callbacks->unloader : noop_unloader;
     ctx.header = (const ElfHeader *) buf;
-    ctx.retval = (ElfHandle *) Malloc(sizeof (ElfHandle));
-    if (ctx.retval == NULL)
-        goto fail;
+    ctx.retval = handle;
     ctx.retval->mmapaddr = ((void *) MAP_FAILED);
     ctx.retval->entry = (void *) ctx.header->e_entry;
+    ctx.retval->unloader = ctx.unloader;
 
     // here we go.
     if (!validate_elf_header(&ctx)) goto fail;
@@ -1158,22 +1149,20 @@ void MOJOELF_dlclose(void *lib)
     if (h == NULL)
         return;
 
+    // !!! FIXME: handle DT_FINI_ARRAYs (must be called before DT_FINI!)
+
     if (h->fini != NULL)
         ((ElfFiniFn) h->fini)();
 
-    // !!! FIXME: handle DT_FINI_ARRAYs
-
-    #if MOJOELF_ALLOW_SYSTEM_RESOLVE
     if (h->dlopens != NULL)
     {
         for (i = 0; i < h->dlopens_count; i++)
         {
             if (h->dlopens[i])
-                dlclose(h->dlopens[i]);
+                h->unloader(h->dlopens[i]);
         } // for
         free(h->dlopens);
     } // if
-    #endif
 
     if (h->mmapaddr != MAP_FAILED)
         munmap(h->mmapaddr, h->mmaplen);
@@ -1190,8 +1179,7 @@ void MOJOELF_dlclose(void *lib)
 
 
 #if MOJOELF_SUPPORT_DLOPEN_FILE
-void *MOJOELF_dlopen_file(const char *fname, MOJOELF_LoaderCallback loader,
-                          MOJOELF_SymbolCallback resolver)
+void *MOJOELF_dlopen_file(const char *fname, const MOJOELF_Callbacks *cb)
 {
     void *retval = NULL;
     struct stat statbuf;
@@ -1210,7 +1198,7 @@ void *MOJOELF_dlopen_file(const char *fname, MOJOELF_LoaderCallback loader,
     {
         close(fd);
         fd = -1;
-        retval = MOJOELF_dlopen_mem(buf, statbuf.st_size, loader, resolver);
+        retval = MOJOELF_dlopen_mem(buf, statbuf.st_size, cb);
     } // else
 
     if (fd != -1)
@@ -1229,7 +1217,6 @@ const void *MOJOELF_getentry(void *lib)
     const ElfHandle *h = (const ElfHandle *) lib;
     return h ? h->entry : NULL;
 } // MOJOELF_getentry
-
 
 // end of mojoelf.c ...
 

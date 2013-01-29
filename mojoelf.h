@@ -13,13 +13,19 @@
 extern "C" {
 #endif
 
-typedef void *(*MOJOELF_SymbolCallback)(const char *sym);
-typedef int (*MOJOELF_LoaderCallback)(const char *soname);
-void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
-                         MOJOELF_LoaderCallback loader,
-                         MOJOELF_SymbolCallback resolver);
-void *MOJOELF_dlopen_file(const char *fname, MOJOELF_LoaderCallback loader,
-                          MOJOELF_SymbolCallback resolver);
+typedef void *(*MOJOELF_LoaderCallback)(const char *soname, const char *rpath, const char *runpath);
+typedef void *(*MOJOELF_ResolverCallback)(void *handle, const char *sym);
+typedef void (*MOJOELF_UnloaderCallback)(void *handle);
+
+typedef struct MOJOELF_Callbacks
+{
+    MOJOELF_LoaderCallback loader;
+    MOJOELF_ResolverCallback resolver;
+    MOJOELF_UnloaderCallback unloader;
+} MOJOELF_Callbacks;
+
+void *MOJOELF_dlopen_mem(const void *buf, const long buflen, const MOJOELF_Callbacks *cb);
+void *MOJOELF_dlopen_file(const char *fname, const MOJOELF_Callbacks *cb);
 void *MOJOELF_dlsym(void *lib, const char *sym);
 void MOJOELF_dlclose(void *lib);
 const char *MOJOELF_dlerror(void);
