@@ -106,7 +106,7 @@ static int find_soname_file(const char *soname, const char *rpath, const char *r
     if ((fd = find_soname_file_in_path_list(soname, runpath)) != -1)
         return fd;
 
-    STUBBED("this would check /etc/ld.so.cache on Linux here.");
+    //STUBBED("this would check /etc/ld.so.cache on Linux here.");
 
     if ((fd = find_soname_file_by_abspath("/lib", soname)) != -1)
         return fd;
