@@ -816,7 +816,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 {
     const ElfSymTable *symbol = ctx->symtab + sym;
     const char *symstr = NULL;
-    void *addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
+    void *addr = NULL;
 
     if ((symbol->st_value) && ((symbol->st_value - ctx->base) > ctx->retval->mmaplen))
         DLOPEN_FAIL("Bogus symbol address");
@@ -826,8 +826,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
     symstr = ctx->strtab + symbol->st_name;
 
     if ((sym == 0) || (*symstr == '\0'))
-        /* no-op */;  // we're done already.
-
+        addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
     else
     {
         dbgprintf(("Resolving '%s' ...\n", symstr));
