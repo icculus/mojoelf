@@ -128,6 +128,25 @@ static int mactrampoline___printf_chk(int flag, const char *fmt, ...)
     return retval;
 } // mactrampoline___printf_chk
 
+static int mactrampoline___sprintf_chk(char *buf, int flag, size_t buflen, const char *fmt, ...)
+{
+    STUBBED("check flag (and stack!)");
+    STUBBED("this should abort if buflen == 0");
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vsnprintf(buf, buflen, fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___sprintf_chk
+
+static int mactrampoline___vsnprintf_chk(char *buf, size_t maxbuflen, int flag, size_t buflen, const char *fmt, va_list ap)
+{
+    STUBBED("check flag (and stack!)");
+    STUBBED("this should abort if buflen < maxbuflen");
+    const int retval = vsnprintf(buf, buflen, fmt, ap);
+    return retval;
+} // mactrampoline___vsnprintf_chk
+
 static char *mactrampoline___strcat_chk(char *dst, const char *src, size_t len)
 {
     STUBBED("check flag (and stack!)");
@@ -761,6 +780,16 @@ static FILE *mactrampoline_fopen64(const char *fname, const char *mode)
 {
     return fopen(fname, mode);  // I think this is always 64-bit clean on Mac?
 } // mactrampoline_fopen64
+
+static int mactrampoline_fseeko64(FILE *io, uint64_t offset, int whence)
+{
+    return fseeko(io, (off_t) offset, whence); // off_t is always 64-bit on Mac OS X.
+} // mactrampoline_fseeko64
+
+static uint64_t mactrampoline_ftello64(FILE *io)
+{
+    return (uint64_t) ftello(io); // off_t is always 64-bit on Mac OS X.
+} // mactrampoline_ftello64
 
 
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
