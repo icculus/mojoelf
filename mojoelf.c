@@ -837,11 +837,16 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 
         if (addr == NULL)
         {
-            addr = ctx->resolver(NULL, symstr);  // last try.
+            // try our own export table?
+            addr = MOJOELF_dlsym(ctx->retval, symstr);
             if (addr == NULL)
             {
-                if (ELF_ST_BIND(symbol->st_info) != STB_WEAK)
-                    DLOPEN_FAIL("Couldn't resolve symbol");
+                addr = ctx->resolver(NULL, symstr);  // last try.
+                if (addr == NULL)
+                {
+                    if (ELF_ST_BIND(symbol->st_info) != STB_WEAK)
+                        DLOPEN_FAIL("Couldn't resolve symbol");
+                } // if
             } // if
         } // if
 
@@ -1103,8 +1108,8 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
     else if (!walk_dynamic_table(&ctx)) goto fail;
     else if (!process_section_headers(&ctx)) goto fail;
     else if (!load_external_dependencies(&ctx)) goto fail;
-    else if (!fixup_relocations(&ctx)) goto fail;
     else if (!build_export_list(&ctx)) goto fail;
+    else if (!fixup_relocations(&ctx)) goto fail;
     else if (!call_so_init(&ctx)) goto fail;
 
     // we made it!
