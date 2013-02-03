@@ -222,15 +222,20 @@ static void *mojoelf_resolver(void *handle, const char *sym)
 
     else  // uh oh, we couldn't satify this dependency!
     {
+        // don't ever supply this; it's a weak symbol used by gprof and should resolve to NULL.
+        if (strcmp(sym, "__gmon_start__") == 0)
+            return NULL;
+
+        // don't ever supply this; it's a weak symbol used by gcj (GNU's Java native compiler) and should resolve to NULL.
+        if (strcmp(sym, "_Jv_RegisterClasses") == 0)
+            return NULL;
+
         if (report_missing_symbols)
             printf("Missing symbol: %s\n", sym);
 
         if ((report_missing_symbols) || (run_with_missing_symbols))
         {
             symbols_missing++;
-            if (strcmp(sym, "__gmon_start__") == 0)
-                return NULL;  // !!! FIXME: this is just to prevent crash, as MOJOELF_dlopen() calls this before returning.
-
             #ifdef __i386__
             static void *page = NULL;
             static int pageused = 0;
