@@ -84,7 +84,13 @@ static int mactrampoline___libc_start_main(
 	void (*init) (void), void (*fini) (void), void (*rtld_fini) (void),
 	void *stack_end)
 {
-    STUBBED("probably need to mess with stack, etc");
+    if (fini != NULL)
+        atexit(fini);
+    if (rtld_fini != NULL)
+        atexit(rtld_fini);
+    if (init != NULL)
+        init();
+
     const int retval = main(argc, argv, environ);
     exit(retval);
 } // mactrampoline___libc_start_main
