@@ -134,7 +134,7 @@ static LoadedLibrary *allocate_loaded_lib(const char *soname, void *handle)
     lib->refcount = 1;
     if (hash_insert(loaded_ELFs, socpy, lib) == 1)
     {
-        printf("Loaded ELF soname '%s'!\n", soname);
+        //printf("Loaded ELF soname '%s'!\n", soname);
         return lib;
     } // if
 
@@ -152,8 +152,8 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     const void *value = NULL;
     if (hash_find(loaded_ELFs, soname, &value))
     {
+        //printf("Ref'ing ELF soname '%s'!\n", soname);
         lib = (LoadedLibrary *) value;
-        printf("Ref'ing ELF soname '%s'!\n", soname);
         lib->refcount++;
         return lib;
     } // if
@@ -162,7 +162,7 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     if (strcmp(soname, "libc.so.6") == 0)
         return allocate_loaded_lib(soname, NULL);
 
-    printf("Trying to load ELF soname '%s'!\n", soname);
+    //printf("Trying to load ELF soname '%s'!\n", soname);
     int fd = find_soname_file(soname, rpath, runpath);
     if (fd != -1)
     {
@@ -283,7 +283,7 @@ static void nuke_loadedelfs_hash(const void *key, const void *value, void *data)
 {
     STUBBED("thread safety");
     LoadedLibrary *lib = (LoadedLibrary *) value;
-    printf("Unloading ELF soname '%s'!\n", lib->soname);
+    //printf("Unloading ELF soname '%s'!\n", lib->soname);
     assert(key == lib->soname);
     if (lib->handle != NULL)
         MOJOELF_dlclose(lib->handle);
@@ -295,7 +295,7 @@ static void mojoelf_unloader(void *handle)
 {
     STUBBED("thread safety");
     LoadedLibrary *lib = (LoadedLibrary *) handle;
-    printf("Unref'ing ELF soname '%s'!\n", lib->soname);
+    //printf("Unref'ing ELF soname '%s'!\n", lib->soname);
     assert(lib->refcount > 0);
     lib->refcount--;
     if (lib->refcount == 0)
@@ -454,7 +454,7 @@ int main(int argc, char **argv, char **envp)
         return 1;
     } // if
 
-    printf("About to call entry point at %p\n", entry);
+    //printf("About to call entry point at %p\n", entry);
 
     #if defined(__i386__)
     __asm__ __volatile__ (
