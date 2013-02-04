@@ -164,7 +164,12 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     } // if
 
     // we always provide glibc entry points.
-    if (strcmp(soname, "libc.so.6") == 0)
+    // !!! FIXME: There's a few more of these we don't list, but should.
+    if ( (strcmp(soname, "libc.so.6") == 0) ||
+         (strcmp(soname, "libm.so.6") == 0) ||
+         (strcmp(soname, "libdl.so.2") == 0) ||
+         (strcmp(soname, "libpthread.so.0") == 0) ||
+         (strcmp(soname, "librt.so.1") == 0) )
         return allocate_loaded_lib(soname, NULL);
 
     //printf("Trying to load ELF soname '%s'!\n", soname);
