@@ -396,7 +396,7 @@ typedef struct linux_stat64
     uint64_t st_mtime_nsec;
     uint64_t st_ctime;
     uint64_t st_ctime_nsec;
-    int64_t __unused[3];
+    int64_t unused[3];
 } linux_stat64;
 
 #else
