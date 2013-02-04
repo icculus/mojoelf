@@ -806,6 +806,15 @@ static uint64_t mactrampoline_ftello64(FILE *io)
     return (uint64_t) ftello(io); // off_t is always 64-bit on Mac OS X.
 } // mactrampoline_ftello64
 
+static void mactrampoline___assert_fail(const char *assertion, const char *fname, unsigned int line, const char *fn)
+{
+    fflush(stdout);
+    fflush(stderr);
+    fprintf(stderr, "%s:%u: %s: Assertion %s failed.\n", fname, line, fn, assertion);
+    fflush(stderr);
+    abort();
+} // mactrampoline___assert_fail
+
 
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
 int build_trampolines(void)
