@@ -492,6 +492,11 @@ static char *mactrampoline_setlocale(int category, const char *locale)
 
 
 
+// We only need a mutex for our global state during the
+//  dlopen/dlsym/dlclone() trampolines. Initial loading happens on the main
+//  (and, at the time, only) thread before handing control to the ELF code.
+static pthread_mutex_t loader_mutex;
+
 // Obviously we want to map dlopen and friends through MojoELF. We can't let
 //  you talk to Mach-O binaries directly in any case, due to calling
 //  convention differences.
@@ -500,17 +505,25 @@ static void *mactrampoline_dlopen(const char *fname, int flags)
 {
     STUBBED("trap a few libs like SDL, OpenGL, X11, OpenAL...");
     STUBBED("flags are ignored");
-    return MOJOELF_dlopen_file(fname, &mojoelf_callbacks);
+    pthread_mutex_lock(&loader_mutex);
+    void *retval = MOJOELF_dlopen_file(fname, &mojoelf_callbacks);
+    pthread_mutex_unlock(&loader_mutex);
+    return retval;
 } // mactrampoline_dlopen
 
 static void *mactrampoline_dlsym(void *lib, const char *sym)
 {
-    return MOJOELF_dlsym(lib, sym);
+    pthread_mutex_lock(&loader_mutex);
+    void *retval = MOJOELF_dlsym(lib, sym);
+    pthread_mutex_unlock(&loader_mutex);
+    return retval;
 } // mactrampoline_dlsym
 
 static int mactrampoline_dlclose(void *lib)
 {
+    pthread_mutex_lock(&loader_mutex);
     MOJOELF_dlclose(lib);
+    pthread_mutex_unlock(&loader_mutex);
     return 0;
 } // mactrampoline_dlclose
 
@@ -795,6 +808,8 @@ static uint64_t mactrampoline_ftello64(FILE *io)
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
 int build_trampolines(void)
 {
+    pthread_mutex_init(&loader_mutex, NULL);
+
     return insert_symbol("stderr", stderr) &&
            insert_symbol("stdout", stdout) &&
            insert_symbol("stdin", stdin) &&

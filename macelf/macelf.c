@@ -28,8 +28,14 @@ static int dependencies_missing = 0;
 char *program_invocation_name = NULL;
 const char *ld_library_path = NULL;
 
-static HashTable *resolver_symbols = NULL;
+// This only needs a mutex during the dlopen/dlsym/dlclone() trampolines.
+// Initial loading happens on the main (and only) thread before handing
+//  control to the ELF code.
 static HashTable *loaded_ELFs = NULL;
+
+// This doesn't need to be mutex'd; it only adds symbols during startup,
+//  before any ELFs are loaded.
+static HashTable *resolver_symbols = NULL;
 
 typedef struct
 {
@@ -148,7 +154,6 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     LoadedLibrary *lib = NULL;
 
     // see if there's an ELF file already loaded we can use.
-    STUBBED("thread safety!"); // protect the hash and the LoadedLibrary refcount.
     const void *value = NULL;
     if (hash_find(loaded_ELFs, soname, &value))
     {
@@ -281,7 +286,6 @@ static void *mojoelf_resolver(void *handle, const char *sym)
 
 static void nuke_loadedelfs_hash(const void *key, const void *value, void *data)
 {
-    STUBBED("thread safety");
     LoadedLibrary *lib = (LoadedLibrary *) value;
     //printf("Unloading ELF soname '%s'!\n", lib->soname);
     assert(key == lib->soname);
@@ -293,7 +297,6 @@ static void nuke_loadedelfs_hash(const void *key, const void *value, void *data)
 
 static void mojoelf_unloader(void *handle)
 {
-    STUBBED("thread safety");
     LoadedLibrary *lib = (LoadedLibrary *) handle;
     //printf("Unref'ing ELF soname '%s'!\n", lib->soname);
     assert(lib->refcount > 0);
