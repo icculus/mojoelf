@@ -32,6 +32,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <utime.h>
+#include <langinfo.h>
 
 #include "mojoelf.h"
 
@@ -317,6 +318,147 @@ static int mactrampoline_mbsinit(/*mbstate_t*/uint64_t *mbstate)
     STUBBED("write me");
     return (*mbstate == 0);
 } // mactrampoline_mbsinit
+
+
+typedef enum
+{
+    LINUX_ABDAY_1=131072,
+    LINUX_ABDAY_2=131073,
+    LINUX_ABDAY_3=131074,
+    LINUX_ABDAY_4=131075,
+    LINUX_ABDAY_5=131076,
+    LINUX_ABDAY_6=131077,
+    LINUX_ABDAY_7=131078,
+    LINUX_DAY_1=131079,
+    LINUX_DAY_2=131080,
+    LINUX_DAY_3=131081,
+    LINUX_DAY_4=131082,
+    LINUX_DAY_5=131083,
+    LINUX_DAY_6=131084,
+    LINUX_DAY_7=131085,
+    LINUX_ABMON_1=131086,
+    LINUX_ABMON_2=131087,
+    LINUX_ABMON_3=131088,
+    LINUX_ABMON_4=131089,
+    LINUX_ABMON_5=131090,
+    LINUX_ABMON_6=131091,
+    LINUX_ABMON_7=131092,
+    LINUX_ABMON_8=131093,
+    LINUX_ABMON_9=131094,
+    LINUX_ABMON_10=131095,
+    LINUX_ABMON_11=131096,
+    LINUX_ABMON_12=131097,
+    LINUX_MON_1=131098,
+    LINUX_MON_2=131099,
+    LINUX_MON_3=131100,
+    LINUX_MON_4=131101,
+    LINUX_MON_5=131102,
+    LINUX_MON_6=131103,
+    LINUX_MON_7=131104,
+    LINUX_MON_8=131105,
+    LINUX_MON_9=131106,
+    LINUX_MON_10=131107,
+    LINUX_MON_11=131108,
+    LINUX_MON_12=131109,
+    LINUX_AM_STR=131110,
+    LINUX_PM_STR=131111,
+    LINUX_D_T_FMT=131112,
+    LINUX_D_FMT=131113,
+    LINUX_T_FMT=131114,
+    LINUX_T_FMT_AMPM=131115,
+    LINUX_ERA=131116,
+    LINUX_ERA_D_FMT=131118,
+    LINUX_ALT_DIGITS=131119,
+    LINUX_ERA_D_T_FMT=131120,
+    LINUX_ERA_T_FMT=131121,
+    LINUX___DATE_FMT=131180,
+    LINUX_CODESET=14,
+    LINUX_RADIXCHAR=65536,
+    LINUX_THOUSEP=65537,
+    LINUX_YESEXPR=327680,
+    LINUX_NOEXPR=327681,
+    LINUX_YESSTR=327682,
+    LINUX_NOSTR=327683,
+} LinuxNlItem;
+
+static char *mactrampoline_nl_langinfo(LinuxNlItem item)
+{
+    nl_item macitem = CODESET;
+    switch (item)
+    {
+        #define CVTTOMACNLITEM(it) case LINUX_##it: macitem = it; break
+        CVTTOMACNLITEM(ABDAY_1);
+        CVTTOMACNLITEM(ABDAY_2);
+        CVTTOMACNLITEM(ABDAY_3);
+        CVTTOMACNLITEM(ABDAY_4);
+        CVTTOMACNLITEM(ABDAY_5);
+        CVTTOMACNLITEM(ABDAY_6);
+        CVTTOMACNLITEM(ABDAY_7);
+        CVTTOMACNLITEM(DAY_1);
+        CVTTOMACNLITEM(DAY_2);
+        CVTTOMACNLITEM(DAY_3);
+        CVTTOMACNLITEM(DAY_4);
+        CVTTOMACNLITEM(DAY_5);
+        CVTTOMACNLITEM(DAY_6);
+        CVTTOMACNLITEM(DAY_7);
+        CVTTOMACNLITEM(ABMON_1);
+        CVTTOMACNLITEM(ABMON_2);
+        CVTTOMACNLITEM(ABMON_3);
+        CVTTOMACNLITEM(ABMON_4);
+        CVTTOMACNLITEM(ABMON_5);
+        CVTTOMACNLITEM(ABMON_6);
+        CVTTOMACNLITEM(ABMON_7);
+        CVTTOMACNLITEM(ABMON_8);
+        CVTTOMACNLITEM(ABMON_9);
+        CVTTOMACNLITEM(ABMON_10);
+        CVTTOMACNLITEM(ABMON_11);
+        CVTTOMACNLITEM(ABMON_12);
+        CVTTOMACNLITEM(MON_1);
+        CVTTOMACNLITEM(MON_2);
+        CVTTOMACNLITEM(MON_3);
+        CVTTOMACNLITEM(MON_4);
+        CVTTOMACNLITEM(MON_5);
+        CVTTOMACNLITEM(MON_6);
+        CVTTOMACNLITEM(MON_7);
+        CVTTOMACNLITEM(MON_8);
+        CVTTOMACNLITEM(MON_9);
+        CVTTOMACNLITEM(MON_10);
+        CVTTOMACNLITEM(MON_11);
+        CVTTOMACNLITEM(MON_12);
+        CVTTOMACNLITEM(AM_STR);
+        CVTTOMACNLITEM(PM_STR);
+        CVTTOMACNLITEM(D_T_FMT);
+        CVTTOMACNLITEM(D_FMT);
+        CVTTOMACNLITEM(T_FMT);
+        CVTTOMACNLITEM(T_FMT_AMPM);
+        CVTTOMACNLITEM(ERA);
+        CVTTOMACNLITEM(ERA_D_FMT);
+        CVTTOMACNLITEM(ALT_DIGITS);
+        CVTTOMACNLITEM(ERA_D_T_FMT);
+        CVTTOMACNLITEM(ERA_T_FMT);
+        CVTTOMACNLITEM(CODESET);
+        CVTTOMACNLITEM(RADIXCHAR);
+        CVTTOMACNLITEM(THOUSEP);
+        CVTTOMACNLITEM(YESEXPR);
+        CVTTOMACNLITEM(NOEXPR);
+        #ifdef YESSTR
+        CVTTOMACNLITEM(YESSTR);
+        #endif
+        #ifdef NOSTR
+        CVTTOMACNLITEM(NOSTR);
+        #endif
+        #undef CVTTOMACNLITEM
+
+        // !!! FIXME: is __DATE_FMT different than D_FMT?
+        case LINUX___DATE_FMT: macitem = D_FMT; break;
+
+        default:
+            fprintf(stderr, "WARNING: Unknown nl_item %d\n", (int) item);
+            return NULL;
+    };
+
+    return nl_langinfo(macitem);
+} // mactrampoline_nl_langinfo
 
 
 #ifdef st_atime
