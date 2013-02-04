@@ -29,6 +29,8 @@
 #include <locale.h>
 #include <getopt.h>
 #include <assert.h>
+#include <sys/time.h>
+#include <time.h>
 #include <utime.h>
 
 #include "mojoelf.h"
