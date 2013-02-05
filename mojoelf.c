@@ -27,6 +27,10 @@
 #define MOJOELF_OSABI 0  // x86 Linux uses ELFOSABI_SYSV, not ELFOSABI_LINUX!
 #endif
 
+#ifndef MOJOELF_ALT_OSABI
+#define MOJOELF_ALT_OSABI 3  // ...but some binaries _do_ use ELFOSABI_LINUX.
+#endif
+
 #ifndef MOJOELF_OSABIVERSION
 #define MOJOELF_OSABIVERSION 0
 #endif
@@ -412,6 +416,8 @@ static int validate_elf_header(const ElfContext *ctx)
 {
     const ElfHeader *hdr = ctx->header;
     const uint8 *buf = hdr->e_ident;
+    const uint8 osabi = buf[EI_OSABI];
+
     if (ctx->buflen < 64)
         DLOPEN_FAIL("Not enough data");
     else if ((buf[0]!=0x7F) || (buf[1]!='E') || (buf[2]!='L') || (buf[3]!='F'))
@@ -422,7 +428,7 @@ static int validate_elf_header(const ElfContext *ctx)
         DLOPEN_FAIL("Unsupported/bogus ELF data ordering");
     else if (buf[EI_VERSION] != 1)
         DLOPEN_FAIL("Unsupported/bogus ELF file version");
-    else if (buf[EI_OSABI] != MOJOELF_OSABI)
+    else if ((osabi != MOJOELF_OSABI) && (osabi != MOJOELF_ALT_OSABI))
         DLOPEN_FAIL("Unsupported/bogus ELF OSABI");
     else if (buf[EI_OSABIVER] != MOJOELF_OSABIVERSION)
         DLOPEN_FAIL("Unsupported/bogus ELF OSABI");
