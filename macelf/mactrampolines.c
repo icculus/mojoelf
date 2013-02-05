@@ -33,6 +33,8 @@
 #include <time.h>
 #include <utime.h>
 #include <langinfo.h>
+#include <sys/wait.h>
+#include <setjmp.h>
 
 #include "mojoelf.h"
 
@@ -71,6 +73,8 @@ extern char **environ;  // !!! FIXME: really? This isn't in a header?
 
 // NOTE: pthread_t is a pointer on Mac OS X, but a long int on Linux (so it
 // NOTE:  happens to be pointer-sized on x86 and amd64).
+
+// NOTE: pid_t is 32-bit on 32/64 bit Linux and Mac OS X.
 
 
 
@@ -956,6 +960,31 @@ static void mactrampoline___assert_fail(const char *assertion, const char *fname
     fflush(stderr);
     abort();
 } // mactrampoline___assert_fail
+
+static pid_t mactrampoline_waitpid(pid_t pid, int *status, int options)
+{
+    // Linux also has WCONTINUED.
+    const int macoptions = options & (WNOHANG | WUNTRACED);
+    if (macoptions != options)
+        fprintf(stderr, "WARNING: called waitpid(%d) with unsupported options: %d\n", (int) pid, (int) options);
+
+    return waitpid(pid, status, macoptions);
+} // mactrampoline_waitpid
+
+
+// jmp_buf is totally different on Linux, but if you think of it as a generic
+//  memory buffer, the Linux buffer is way larger than we need.
+//  setjmp on Linux becomes _setjmp in the binary standard, but it doesn't
+//  work like the Mac _setjmp().
+static int mactrampoline__setjmp(jmp_buf env)
+{
+    return setjmp(env);
+} // mactrampoline__setjmp
+
+static void mactrampoline_longjmp(jmp_buf env, int val)
+{
+    longjmp(env, val);
+} // mactrampoline_longjmp
 
 
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo

@@ -82,6 +82,9 @@ MACTRAMPOLINE_OVERRIDE(seekdir)
 MACTRAMPOLINE_OVERRIDE(telldir)
 MACTRAMPOLINE_OVERRIDE(closedir)
 MACTRAMPOLINE_OVERRIDE(__assert_fail)
+MACTRAMPOLINE_OVERRIDE(waitpid)
+MACTRAMPOLINE_OVERRIDE(_setjmp)
+MACTRAMPOLINE_OVERRIDE(longjmp)
 
 #ifdef __i386__
 MACTRAMPOLINE_OVERRIDE(__xstat64)
@@ -971,10 +974,9 @@ MACTRAMPOLINE(int,utimes,(const char *a, const struct timeval b[2]),(a,b),return
 //MACTRAMPOLINE(ssize_t,writev,(int a, const struct iovec *b, int c),(a,b,c),return)
 //MACTRAMPOLINE(int,statvfs,(const char *a, struct statvfs *b),(a,b),return)
 //MACTRAMPOLINE(int,fstatvfs,(int a, struct statvfs *b),(a,b),return)
-//MACTRAMPOLINE(pid_t,wait,(int *a),(a),return)
+MACTRAMPOLINE(pid_t,wait,(int *a),(a),return)
 //MACTRAMPOLINE(pid_t,wait3,(int *a, int b, struct rusage *c),(a,b,c),return)
 //MACTRAMPOLINE(int,waitid,(idtype_t a, id_t b, siginfo_t *c, int d),(a,b,c,d),return)
-//MACTRAMPOLINE(pid_t,waitpid,(pid_t a, int *b, int c),(a,b,c),return)
 //MACTRAMPOLINE(int,uname,(struct utsname  *a),(a),return)
 //MACTRAMPOLINE(int,msgctl,(int a, int b, struct msqid_ds *c),(a,b,c),return)
 //MACTRAMPOLINE(int,msgget,(key_t a, int b),(a,b),return)
@@ -996,7 +998,10 @@ MACTRAMPOLINE(int,utimes,(const char *a, const struct timeval b[2]),(a,b),return
 //MACTRAMPOLINE(ssize_t,sendto,(int a, const void *b, size_t c, int d, const struct sockaddr *e, socklen_t f),(a,b,c,d,e,f),return)
 //MACTRAMPOLINE(int,setsockopt,(int a, int b, int c, const void *d, socklen_t e),(a,b,c,d,e),return)
 //MACTRAMPOLINE(int,shutdown,(int a, int b),(a,b),return)
-//MACTRAMPOLINE(int,socket,(int a, int b, int c),(a,b,c),return)
+
+// This doesn't match up exactly with Linux, but it does for the things people care about (AF_UNIX, AF_INET, etc).
+MACTRAMPOLINE(int,socket,(int a, int b, int c),(a,b,c),return)
+
 //MACTRAMPOLINE(int,socketpair,(int a, int b, int c, int d[2]),(a,b,c,d),return)
 //MACTRAMPOLINE(int,sockatmark,(int a),(a),return)
 //MACTRAMPOLINE(clock_t,times,(struct tms *a),(a),return)
