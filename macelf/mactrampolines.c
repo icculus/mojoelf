@@ -35,6 +35,8 @@
 #include <langinfo.h>
 #include <sys/wait.h>
 #include <setjmp.h>
+#include <pwd.h>
+#include <uuid/uuid.h>
 
 #include "mojoelf.h"
 
@@ -110,6 +112,11 @@ static int mactrampoline___cxa_atexit(void (*func) (void *), void * arg, void * 
     STUBBED("write me");
     return 0;
 } // mactrampoline___cxa_atexit
+
+static void mactrampoline___cxa_finalize(void *handle)
+{
+    STUBBED("write me");
+} // mactrampoline___cxa_finalize
 
 static size_t mactrampoline___ctype_get_mb_cur_max(void)
 {
@@ -479,7 +486,7 @@ static char *mactrampoline_nl_langinfo(LinuxNlItem item)
 #endif
 
 #ifdef __i386__
-typedef struct linux_stat32
+typedef struct LinuxStat32
 {
     uint32_t st_dev;
     uint32_t st_ino;
@@ -499,9 +506,9 @@ typedef struct linux_stat32
     uint32_t st_ctime_nsec;
     uint32_t __unused4;
     uint32_t __unused5;
-} linux_stat32;
+} LinuxStat32;
 
-typedef struct linux_stat64
+typedef struct LinuxStat64
 {
     uint64_t st_dev;
     uint32_t __pad0;
@@ -522,11 +529,13 @@ typedef struct linux_stat64
     uint32_t st_ctime;
     uint32_t st_ctime_nsec;
     uint64_t st_ino;
-} linux_stat64;
+} LinuxStat64;
+
+#define NATIVE_STAT_BITS 32
 
 #elif defined(__x86_64__)
 
-typedef struct linux_stat64
+typedef struct LinuxStat64
 {
     uint64_t st_dev;
     uint64_t st_ino;
@@ -538,7 +547,7 @@ typedef struct linux_stat64
     uint64_t st_rdev;
     int64_t st_size;
     int64_t st_blksize;
-    int64_t st_blocks;	/* Number 512-byte blocks allocated. */
+    int64_t st_blocks;
     uint64_t st_atime;
     uint64_t st_atime_nsec;
     uint64_t st_mtime;
@@ -546,18 +555,43 @@ typedef struct linux_stat64
     uint64_t st_ctime;
     uint64_t st_ctime_nsec;
     int64_t unused[3];
-} linux_stat64;
+} LinuxStat64;
+
+#define NATIVE_STAT_BITS 64
 
 #else
 #error Please define your platform.
 #endif
 
 #ifdef __i386__
-static void mac_stat_to_linux64(struct stat *macstat, linux_stat64 *lnxstat)
+static void mac_stat_to_linux32(struct stat *macstat, LinuxStat32 *lnxstat)
+{
+    lnxstat->st_dev = (uint32_t) macstat->st_dev;
+    lnxstat->st_ino = (uint32_t) macstat->st_ino;
+    lnxstat->st_mode = (uint16_t) macstat->st_mode;
+    lnxstat->st_nlink = (uint16_t) macstat->st_nlink;
+    lnxstat->st_uid = (uint16_t) macstat->st_uid;
+    lnxstat->st_gid = (uint16_t) macstat->st_gid;
+    lnxstat->st_rdev = (uint32_t) macstat->st_rdev;
+    lnxstat->st_size = (uint32_t) macstat->st_size;
+    lnxstat->st_blksize = (uint32_t) macstat->st_blksize;
+    lnxstat->st_blocks = (uint32_t) macstat->st_blocks;
+    lnxstat->st_atime = (uint32_t) macstat->st_atimespec.tv_sec;
+    lnxstat->st_atime_nsec = (uint32_t) macstat->st_atimespec.tv_nsec;
+    lnxstat->st_mtime = (uint32_t) macstat->st_mtimespec.tv_sec;
+    lnxstat->st_mtime_nsec = (uint32_t) macstat->st_mtimespec.tv_nsec;
+    lnxstat->st_ctime = (uint32_t) macstat->st_ctimespec.tv_sec;
+    lnxstat->st_ctime_nsec = (uint32_t) macstat->st_ctimespec.tv_nsec;
+    lnxstat->__unused4 = lnxstat->__unused5 = 0;
+} // mac_stat_to_linux32
+#endif
+
+static void mac_stat_to_linux64(struct stat *macstat, LinuxStat64 *lnxstat)
 {
 // mode_t is 2 bytes on Mac OS X, but 4 on Linux.
 // dev_t is 4 bytes on Mac OS X, but 8 on Linux.
 
+#ifdef __i386__
     lnxstat->st_dev = (uint64_t) macstat->st_dev;
     lnxstat->__pad0 = 0;
     lnxstat->__st_ino = (uint32_t) macstat->st_ino;
@@ -577,32 +611,72 @@ static void mac_stat_to_linux64(struct stat *macstat, linux_stat64 *lnxstat)
     lnxstat->st_ctime = (uint32_t) macstat->st_ctimespec.tv_sec;
     lnxstat->st_ctime_nsec = (uint32_t) macstat->st_ctimespec.tv_nsec;
     lnxstat->st_ino = (uint64_t) macstat->st_ino;
+
+#elif defined(__x86_64__)
+    lnxstat->st_dev = (uint64_t) macstat->st_dev;
+    lnxstat->st_ino = (uint64_t) macstat->st_ino;
+    lnxstat->st_nlink = (uint64_t) macstat->st_nlink;
+    lnxstat->st_mode = (uint32_t) macstat->st_mode;
+    lnxstat->st_uid = (uint32_t) macstat->st_uid;
+    lnxstat->st_gid = (uint32_t) macstat->st_gid;
+    lnxstat->__pad0 = 0;
+    lnxstat->st_rdev = (uint64_t) macstat->st_rdev;
+    lnxstat->st_size = (int64_t) macstat->st_size;
+    lnxstat->st_blksize = (int64_t) macstat->st_blksize;
+    lnxstat->st_blocks = (int64_t) macstat->st_blocks;
+    lnxstat->st_atime = (uint64_t) macstat->st_atimespec.tv_sec;
+    lnxstat->st_atime_nsec = (uint64_t) macstat->st_atimespec.tv_nsec;
+    lnxstat->st_mtime = (uint64_t) macstat->st_mtimespec.tv_sec;
+    lnxstat->st_mtime_nsec = (uint64_t) macstat->st_mtimespec.tv_nsec;
+    lnxstat->st_ctime = (uint64_t) macstat->st_ctimespec.tv_sec;
+    lnxstat->st_ctime_nsec = (uint64_t) macstat->st_ctimespec.tv_nsec;
+    lnxstat->unused[0] = lnxstat->unused[1] = lnxstat->unused[2] = 0;
+
+#else
+#error Please define your platform.
+#endif
 }
 
-#define XSTAT_IMPL(fn, arg) \
+#define XSTAT_IMPL2(bits, fn, arg) \
     struct stat macstat; \
     assert(ver == 3); \
     if (fn(arg, &macstat) == -1) { \
         return -1; \
     } \
-    mac_stat_to_linux64(&macstat, lnxstat); \
+    mac_stat_to_linux##bits(&macstat, lnxstat); \
     return 0;
 
-static int mactrampoline___xstat64(int ver, const char *path, linux_stat64 *lnxstat)
+#define XSTAT_IMPL(bits, fn, arg) XSTAT_IMPL2(bits, fn, arg)
+
+static int mactrampoline___xstat64(int ver, const char *path, LinuxStat64 *lnxstat)
 {
-    XSTAT_IMPL(stat, path);
+    XSTAT_IMPL(64, stat, path);
 } // mactrampoline___fxstat64
 
-static int mactrampoline___lxstat64(int ver, const char *path, linux_stat64 *lnxstat)
+static int mactrampoline___lxstat64(int ver, const char *path, LinuxStat64 *lnxstat)
 {
-    XSTAT_IMPL(lstat, path);
+    XSTAT_IMPL(64, lstat, path);
 } // mactrampoline___fxstat64
 
-static int mactrampoline___fxstat64(int ver, int fd, linux_stat64 *lnxstat)
+static int mactrampoline___fxstat64(int ver, int fd, LinuxStat64 *lnxstat)
 {
-    XSTAT_IMPL(fstat, fd);
+    XSTAT_IMPL(64, fstat, fd);
 } // mactrampoline___fxstat64
-#endif
+
+static int mactrampoline___xstat(int ver, const char *path, LinuxStat32 *lnxstat)
+{
+    XSTAT_IMPL(NATIVE_STAT_BITS, stat, path);
+} // mactrampoline___xstat
+
+static int mactrampoline___lxstat(int ver, const char *path, LinuxStat32 *lnxstat)
+{
+    XSTAT_IMPL(NATIVE_STAT_BITS, lstat, path);
+} // mactrampoline___lxstat
+
+static int mactrampoline___fxstat(int ver, int fd, LinuxStat32 *lnxstat)
+{
+    XSTAT_IMPL(NATIVE_STAT_BITS, fstat, fd);
+} // mactrampoline___fxstat
 
 
 static char *mactrampoline___strdup(const char *str) { return strdup(str); }
@@ -641,6 +715,102 @@ static char *mactrampoline_setlocale(int category, const char *locale)
     return setlocale(maccat, locale);
 } // mactrampoline_setlocale
 
+
+typedef struct
+{
+    char *pw_name;
+    char *pw_passwd;
+    uid_t pw_uid;
+    gid_t pw_gid;
+    char *pw_gecos;
+    char *pw_dir;
+    char *pw_shell;
+} LinuxPasswd;
+
+static void mac_passwd_to_linux(const struct passwd *macpw, LinuxPasswd *lnxpw)
+{
+    lnxpw->pw_name = macpw->pw_name;
+    lnxpw->pw_passwd = macpw->pw_passwd;
+    lnxpw->pw_uid = macpw->pw_uid;
+    lnxpw->pw_gid = macpw->pw_gid;
+    lnxpw->pw_gecos = macpw->pw_gecos;
+    lnxpw->pw_dir = macpw->pw_dir;
+    lnxpw->pw_shell = macpw->pw_shell;
+} // mac_passwd_to_linux
+
+static LinuxPasswd *mactrampoline_getpwnam(const char *name)
+{
+    static LinuxPasswd lnxpw;
+    // !!! FIXME: bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    static char buf[512];
+    struct passwd macpw;
+    struct passwd *result = NULL;
+
+    if ((getpwnam_r(name, &macpw, buf, sizeof (buf), &result) != 0) || (!result))
+        return NULL;
+    mac_passwd_to_linux(&macpw, &lnxpw);
+    return &lnxpw;
+} // mactrampoline_getpwnam
+
+static LinuxPasswd *mactrampoline_getpwuid(uid_t uid)
+{
+    static LinuxPasswd lnxpw;
+    // !!! FIXME: bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    static char buf[512];
+    struct passwd macpw;
+    struct passwd *result = NULL;
+
+    if ((getpwuid_r(uid, &macpw, buf, sizeof (buf), &result) != 0) || (!result))
+        return NULL;
+    mac_passwd_to_linux(&macpw, &lnxpw);
+    return &lnxpw;
+} // mactrampoline_getpwuid
+
+static int mactrampoline_getpwnam_r(const char *name, LinuxPasswd *lnxpw, char *buf, size_t bufsize, LinuxPasswd **lnxresult)
+{
+    struct passwd macpw;
+    struct passwd *macresult = NULL;
+    const int rc = getpwnam_r(name, &macpw, buf, bufsize, &macresult);
+    if (lnxresult)
+        *lnxresult = ((rc == 0) && (macresult)) ? lnxpw : NULL;
+    mac_passwd_to_linux(&macpw, lnxpw);
+    return rc;
+} // mactrampoline_getpwnam_r
+
+static int mactrampoline_getpwuid_r(uid_t uid, LinuxPasswd *lnxpw, char *buf, size_t bufsize, LinuxPasswd **lnxresult)
+{
+    struct passwd macpw;
+    struct passwd *macresult = NULL;
+    const int rc = getpwuid_r(uid, &macpw, buf, bufsize, &macresult);
+    if (lnxresult)
+        *lnxresult = ((rc == 0) && (macresult)) ? lnxpw : NULL;
+    mac_passwd_to_linux(&macpw, lnxpw);
+    return rc;
+} // mactrampoline_getpwuid_r
+
+static LinuxPasswd *mactrampoline_getpwent(void)
+{
+    static LinuxPasswd lnxpw;
+    struct passwd *macpw = getpwent();
+    if (macpw == NULL)
+        return NULL;
+    mac_passwd_to_linux(macpw, &lnxpw);
+    return &lnxpw;
+} // mactrampoline_getpwent
+
+// !!! FIXME: want builtins!
+//#define SINCOS_IMPL(suffix,typ) \
+//    static void mactrampoline_sincos##suffix(typ x, typ *_sin, typ *_cos) { \
+//        __builtin_sincos##suffix(x, _sin, _cos); \
+//    }
+#define SINCOS_IMPL(suffix,typ) \
+    static void mactrampoline_sincos##suffix(typ x, typ *_sin, typ *_cos) { \
+        *_sin = sin(x); *_cos = cos(x); \
+    }
+SINCOS_IMPL(,double)
+SINCOS_IMPL(f,float)
+SINCOS_IMPL(l,long double)
+#undef SINCOS_IMPL
 
 
 // We only need a mutex for our global state during the
@@ -988,6 +1158,355 @@ static void mactrampoline_longjmp(jmp_buf env, int val)
 {
     longjmp(env, val);
 } // mactrampoline_longjmp
+
+
+// pthread_t matches up closely enough, but much of the rest of the pthread
+//  structs don't, so we end up allocating the mac versions, and using the
+//  the Linux-sized buffers to store a single pointer to our allocated object.
+static int mactrampoline_pthread_attr_init(void/*pthread_attr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_attr_t *macattr = (pthread_attr_t *) malloc(sizeof (pthread_attr_t));
+    if (macattr == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const int rc = pthread_attr_init(macattr);
+    if (rc != 0)
+        free(macattr);
+    else
+        *((void **) lnxattr) = macattr;
+    return rc;
+} // mactrampoline_pthread_attr_init
+
+static int mactrampoline_pthread_attr_destroy(void/*pthread_attr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_attr_t *macattr = *(pthread_attr_t **) lnxattr;
+    const int rc = pthread_attr_destroy(macattr);
+    if (rc == 0)
+        free(macattr);
+    return rc;
+} // mactrampoline_pthread_attr_destroy
+
+#define PTHREAD_ATTR_TRAMPOLINE(state, typ) \
+    static int mactrampoline_pthread_attr_get##state(const void/*pthread_attr_t*/ *lnxattr, typ *val) { \
+        STUBBED("need to convert errors to Linux values"); \
+        return pthread_attr_get##state(*(const pthread_attr_t **) lnxattr, val); \
+    } \
+    static int mactrampoline_pthread_attr_set##state(void/*pthread_attr_t*/ *lnxattr, typ val) { \
+        STUBBED("need to convert errors to Linux values"); \
+        return pthread_attr_set##state(*(pthread_attr_t **) lnxattr, val); \
+    }
+
+PTHREAD_ATTR_TRAMPOLINE(detachstate, int)
+PTHREAD_ATTR_TRAMPOLINE(guardsize, size_t)
+PTHREAD_ATTR_TRAMPOLINE(inheritsched, int)
+PTHREAD_ATTR_TRAMPOLINE(schedpolicy, int)
+PTHREAD_ATTR_TRAMPOLINE(scope, int)
+PTHREAD_ATTR_TRAMPOLINE(stackaddr, void *)
+PTHREAD_ATTR_TRAMPOLINE(stacksize, size_t)
+
+#undef PTHREAD_ATTR_TRAMPOLINE
+
+
+static int mactrampoline_pthread_cond_init(void/*pthread_cond_t*/ *lnxcond, const void /*pthread_condattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_cond_t *maccond = (pthread_cond_t *) malloc(sizeof (pthread_cond_t));
+    if (maccond == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const pthread_condattr_t *macattr = lnxattr ? *(const pthread_condattr_t **) lnxattr : NULL;
+    const int rc = pthread_cond_init(maccond, macattr);
+    if (rc != 0)
+        free(maccond);
+    else
+        *((void **) lnxcond) = maccond;
+    return rc;
+} // mactrampoline_pthread_cond_init
+
+static int mactrampoline_pthread_cond_destroy(void/*pthread_cond_t*/ *lnxcond)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_cond_t *maccond = *(pthread_cond_t **) lnxcond;
+    const int rc = pthread_cond_destroy(maccond);
+    if (rc == 0)
+        free(maccond);
+    return rc;
+} // mactrampoline_pthread_cond_destroy
+
+static int mactrampoline_pthread_cond_broadcast(void/*pthread_cond_t*/ *lnxcond)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_cond_broadcast(*(pthread_cond_t **) lnxcond);
+} // mactrampoline_pthread_cond_broadcast
+
+static int mactrampoline_pthread_cond_signal(void/*pthread_cond_t*/ *lnxcond)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_cond_signal(*(pthread_cond_t **) lnxcond);
+} // mactrampoline_pthread_cond_signal
+
+static int mactrampoline_pthread_cond_timedwait(void/*pthread_cond_t*/ *lnxcond, void/*pthread_mutex_t*/ *lnxmutex, const struct timespec *tspec)
+{
+    // timespec should match between Linux and Mac OS X.
+    STUBBED("need to convert errors to Linux values");
+    pthread_cond_t *maccond = *(pthread_cond_t **) lnxcond;
+    pthread_mutex_t *macmutex = *(pthread_mutex_t **) lnxmutex;
+    return pthread_cond_timedwait(maccond, macmutex, tspec);
+} // mactrampoline_pthread_cond_timedwait
+
+static int mactrampoline_pthread_cond_wait(void/*pthread_cond_t*/ *lnxcond, void/*pthread_mutex_t*/ *lnxmutex)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_cond_wait(*(pthread_cond_t **) lnxcond, *(pthread_mutex_t **) lnxmutex);
+} // mactrampoline_pthread_cond_wait
+
+static int mactrampoline_pthread_condattr_init(void/*pthread_condattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_condattr_t *macattr = (pthread_condattr_t *) malloc(sizeof (pthread_condattr_t));
+    if (macattr == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const int rc = pthread_condattr_init(macattr);
+    if (rc != 0)
+        free(macattr);
+    else
+        *((void **) lnxattr) = macattr;
+    return rc;
+} // mactrampoline_pthread_condattr_init
+
+static int mactrampoline_pthread_condattr_destroy(void/*pthread_condattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_condattr_t *macattr = *(pthread_condattr_t **) lnxattr;
+    const int rc = pthread_condattr_destroy(macattr);
+    if (rc == 0)
+        free(macattr);
+    return rc;
+} // mactrampoline_pthread_condattr_destroy
+
+static int mactrampoline_pthread_condattr_getpshared(const void/*pthread_condattr_t*/ *lnxattr, int *pshared)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_condattr_getpshared(*(const pthread_condattr_t **) lnxattr, pshared);
+} // mactrampoline_pthread_condattr_getpshared
+
+static int mactrampoline_pthread_condattr_setpshared(void/*pthread_condattr_t*/ *lnxattr, int pshared)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_condattr_setpshared(*(pthread_condattr_t **) lnxattr, pshared);
+} // mactrampoline_pthread_condattr_setpshared
+
+static int mactrampoline_pthread_create(pthread_t *thread, const void/*pthread_attr_t*/ *lnxattr, void *(*fn)(void*), void *fnarg)
+{
+    STUBBED("need to convert errors to Linux values");
+    const pthread_attr_t *macattr = lnxattr ? *(const pthread_attr_t **) lnxattr : NULL;
+    return pthread_create(thread, macattr, fn, fnarg);
+} // mactrampoline_pthread_create
+
+static int mactrampoline_pthread_mutex_init(void/*pthread_mutex_t*/ *lnxmutex, const void/*pthread_mutexattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutex_t *macmutex = (pthread_mutex_t *) malloc(sizeof (pthread_mutex_t));
+    if (macmutex == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const pthread_mutexattr_t *macattr = lnxattr ? *(const pthread_mutexattr_t **) lnxattr : NULL;
+    const int rc = pthread_mutex_init(macmutex, macattr);
+    if (rc != 0)
+        free(macmutex);
+    else
+        *((void **) lnxmutex) = macmutex;
+    return rc;
+} // mactrampoline_pthread_mutex_init
+
+static int mactrampoline_pthread_mutex_destroy(void/*pthread_mutex_t*/ *lnxmutex)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutex_t *macmutex = *(pthread_mutex_t **) lnxmutex;
+    const int rc = pthread_mutex_destroy(macmutex);
+    if (rc == 0)
+        free(macmutex);
+    return rc;
+} // mactrampoline_pthread_mutex_destroy
+
+static int mactrampoline_pthread_mutex_lock(void/*pthread_mutex_t*/ *lnxmutex)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutex_lock(*(pthread_mutex_t **) lnxmutex);
+} // mactrampoline_pthread_mutex_lock
+
+#if 0 // Whoops, not in Mac OS X yet.
+static int mactrampoline_pthread_mutex_timedlock(void/*pthread_mutex_t*/ *lnxmutex, const struct timespec *tspec)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutex_timedlock(*(pthread_mutex_t **) lnxmutex, tspec);
+} // mactrampoline_pthread_mutex_timedlock
+#endif
+
+static int mactrampoline_pthread_mutex_trylock(void/*pthread_mutex_t*/ *lnxmutex)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutex_trylock(*(pthread_mutex_t **) lnxmutex);
+} // mactrampoline_pthread_mutex_trylock
+
+static int mactrampoline_pthread_mutex_unlock(void/*pthread_mutex_t*/ *lnxmutex)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutex_unlock(*(pthread_mutex_t **) lnxmutex);
+} // mactrampoline_pthread_mutex_unlock
+
+static int mactrampoline_pthread_mutexattr_init(void/*pthread_mutexattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutexattr_t *macattr = (pthread_mutexattr_t *) malloc(sizeof (pthread_mutexattr_t));
+    if (macattr == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const int rc = pthread_mutexattr_init(macattr);
+    if (rc != 0)
+        free(macattr);
+    else
+        *((void **) lnxattr) = macattr;
+    return rc;
+} // mactrampoline_pthread_mutexattr_init
+
+static int mactrampoline_pthread_mutexattr_destroy(void/*pthread_mutexattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutexattr_t *macattr = *(pthread_mutexattr_t **) lnxattr;
+    const int rc = pthread_mutexattr_destroy(macattr);
+    if (rc == 0)
+        free(macattr);
+    return rc;
+} // mactrampoline_pthread_mutexattr_destroy
+
+static int mactrampoline_pthread_mutexattr_getpshared(const void/*pthread_mutexattr_t*/ *lnxattr, int *pshared)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutexattr_getpshared(*(const pthread_mutexattr_t **) lnxattr, pshared);
+} // mactrampoline_pthread_mutexattr_getpshared
+
+static int mactrampoline_pthread_mutexattr_gettype(const void/*pthread_mutexattr_t*/ *lnxattr, int *typ)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutexattr_gettype(*(const pthread_mutexattr_t **) lnxattr, typ);
+} // mactrampoline_pthread_mutexattr_gettype
+
+static int mactrampoline_pthread_mutexattr_setpshared(void/*pthread_mutexattr_t*/ *lnxattr, int pshared)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutexattr_setpshared(*(pthread_mutexattr_t **) lnxattr, pshared);
+} // mactrampoline_pthread_mutexattr_setpshared
+
+static int mactrampoline_pthread_mutexattr_settype(void/*pthread_mutexattr_t*/ *lnxattr, int typ)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_mutexattr_settype(*(pthread_mutexattr_t **) lnxattr, typ);
+} // mactrampoline_pthread_mutexattr_settype
+
+static int mactrampoline_pthread_rwlock_init(void/*pthread_rwlock_t*/ *lnxrwlock, const void/*pthread_rwlockattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_rwlock_t *macrwlock = (pthread_rwlock_t *) malloc(sizeof (pthread_rwlock_t));
+    if (macrwlock == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const pthread_rwlockattr_t *macattr = lnxattr ? *(const pthread_rwlockattr_t **) lnxattr : NULL;
+    const int rc = pthread_rwlock_init(macrwlock, macattr);
+    if (rc != 0)
+        free(macrwlock);
+    else
+        *((void **) lnxrwlock) = macrwlock;
+    return rc;
+} // mactrampoline_pthread_rwlock_init
+
+static int mactrampoline_pthread_rwlock_destroy(void/*pthread_rwlock_t*/ *lnxrwlock)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_rwlock_t *macrwlock = *(pthread_rwlock_t **) lnxrwlock;
+    const int rc = pthread_rwlock_destroy(macrwlock);
+    if (rc == 0)
+        free(macrwlock);
+    return rc;
+} // mactrampoline_pthread_rwlock_destroy
+
+static int mactrampoline_pthread_rwlock_rdlock(void/*pthread_rwlock_t*/ *lnxrwlock)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_rdlock(*(pthread_rwlock_t **) lnxrwlock);
+} // mactrampoline_pthread_rwlock_rdlock
+
+#if 0 // Whoops, not in Mac OS X yet.
+static int mactrampoline_pthread_rwlock_timedrdlock(void/*pthread_rwlock_t*/ *lnxrwlock, const struct timespec *tspec)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_timedrdlock(*(pthread_rwlock_t **) lnxrwlock, tspec);
+} // mactrampoline_pthread_rwlock_timedrdlock
+
+static int mactrampoline_pthread_rwlock_timedwrlock(void/*pthread_rwlock_t*/ *lnxrwlock, const struct timespec *tspec)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_timedwrlock(*(pthread_rwlock_t **) lnxrwlock, tspec);
+} // mactrampoline_pthread_rwlock_timedwrlock
+#endif
+
+static int mactrampoline_pthread_rwlock_tryrdlock(void/*pthread_rwlock_t*/ *lnxrwlock)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_tryrdlock(*(pthread_rwlock_t **) lnxrwlock);
+} // mactrampoline_pthread_rwlock_tryrdlock
+
+static int mactrampoline_pthread_rwlock_trywrlock(void/*pthread_rwlock_t*/ *lnxrwlock)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_trywrlock(*(pthread_rwlock_t **) lnxrwlock);
+} // mactrampoline_pthread_rwlock_trywrlock
+
+static int mactrampoline_pthread_rwlock_unlock(void/*pthread_rwlock_t*/ *lnxrwlock)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_unlock(*(pthread_rwlock_t **) lnxrwlock);
+} // mactrampoline_pthread_rwlock_unlock
+
+static int mactrampoline_pthread_rwlock_wrlock(void/*pthread_rwlock_t*/ *lnxrwlock)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlock_wrlock(*(pthread_rwlock_t **) lnxrwlock);
+} // mactrampoline_pthread_rwlock_wrlock
+
+static int mactrampoline_pthread_rwlockattr_init(void/*pthread_rwlockattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_rwlockattr_t *macattr = (pthread_rwlockattr_t *) malloc(sizeof (pthread_rwlockattr_t));
+    if (macattr == NULL)
+        return ENOMEM;  // !!! FIXME: convert error
+    const int rc = pthread_rwlockattr_init(macattr);
+    if (rc != 0)
+        free(macattr);
+    else
+        *((void **) lnxattr) = macattr;
+    return rc;
+} // mactrampoline_pthread_rwlockattr_init
+
+static int mactrampoline_pthread_rwlockattr_destroy(void/*pthread_rwlockattr_t*/ *lnxattr)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_rwlockattr_t *macattr = *(pthread_rwlockattr_t **) lnxattr;
+    const int rc = pthread_rwlockattr_destroy(macattr);
+    if (rc == 0)
+        free(macattr);
+    return rc;
+} // mactrampoline_pthread_rwlockattr_destroy
+
+static int mactrampoline_pthread_rwlockattr_getpshared(const void/*pthread_rwlockattr_t*/ *lnxattr, int *pshared)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlockattr_getpshared(*(pthread_rwlockattr_t **) lnxattr, pshared);
+} // mactrampoline_pthread_rwlockattr_getpshared
+
+static int mactrampoline_pthread_rwlockattr_setpshared(void/*pthread_rwlockattr_t*/ *lnxattr, int pshared)
+{
+    STUBBED("need to convert errors to Linux values");
+    return pthread_rwlockattr_setpshared(*(pthread_rwlockattr_t **) lnxattr, pshared);
+} // mactrampoline_pthread_rwlockattr_setpshared
+
 
 
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
