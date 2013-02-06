@@ -91,14 +91,17 @@ static int mactrampoline___libc_start_main(
 	void (*init) (void), void (*fini) (void), void (*rtld_fini) (void),
 	void *stack_end)
 {
-    if (fini != NULL)
-        atexit(fini);
-    if (rtld_fini != NULL)
-        atexit(rtld_fini);
     if (init != NULL)
         init();
 
     const int retval = main(argc, argv, environ);
+
+    if (rtld_fini != NULL)
+        rtld_fini();
+
+    if (fini != NULL)
+        fini();
+
     exit(retval);
 } // mactrampoline___libc_start_main
 
