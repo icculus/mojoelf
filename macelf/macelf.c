@@ -169,6 +169,7 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
          (strcmp(soname, "libm.so.6") == 0) ||
          (strcmp(soname, "libdl.so.2") == 0) ||
          (strcmp(soname, "libpthread.so.0") == 0) ||
+         (strcmp(soname, "ld-linux.so.2") == 0) ||
          (strcmp(soname, "librt.so.1") == 0) )
         return allocate_loaded_lib(soname, NULL);
 
