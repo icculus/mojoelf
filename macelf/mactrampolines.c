@@ -1525,6 +1525,65 @@ static int mactrampoline_pthread_rwlockattr_setpshared(void/*pthread_rwlockattr_
 } // mactrampoline_pthread_rwlockattr_setpshared
 
 
+// pthread_key_t is always uint32_t on Linux, it's uintptr_t on Mac OS X, so
+//  we need to keep an array of them and use the Linux half as the index.
+static pthread_key_t *pthread_keys = NULL;
+static uint32_t num_pthread_keys = 0;
+static pthread_mutex_t pthread_key_mutex;
+static int mactrampoline_pthread_key_create(uint32_t/*pthread_key_t*/ *lnxpkey, void (*destructfn)(void*))
+{
+    // !!! FIXME: this is kinda lazy.
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutex_lock(&pthread_key_mutex);
+    void *ptr = realloc(pthread_keys, sizeof (pthread_key_t) * (num_pthread_keys + 1));
+    if (ptr == NULL)
+    {
+        pthread_mutex_unlock(&pthread_key_mutex);
+        return ENOMEM;  // !!! FIXME: convert error
+    } // if
+    pthread_keys = (pthread_key_t *) ptr;
+    const int rc = pthread_key_create(&pthread_keys[num_pthread_keys], destructfn);
+    if (rc == 0)
+        *lnxpkey = num_pthread_keys++;
+    pthread_mutex_unlock(&pthread_key_mutex);
+    return rc;
+} // mactrampoline_pthread_getspecific
+
+static int mactrampoline_pthread_key_delete(uint32_t/*pthread_key_t*/ lnxkey)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutex_lock(&pthread_key_mutex);
+    int retval = 0;
+    if (lnxkey >= num_pthread_keys)
+        retval = EINVAL;
+    else
+        retval = pthread_key_delete(pthread_keys[lnxkey]);
+    pthread_mutex_unlock(&pthread_key_mutex);
+    return retval;
+} // mactrampoline_pthread_getspecific
+
+static int mactrampoline_pthread_setspecific(uint32_t/*pthread_key_t*/ lnxkey, const void *value)
+{
+    STUBBED("need to convert errors to Linux values");
+    pthread_mutex_lock(&pthread_key_mutex);
+    int retval = 0;
+    if (lnxkey >= num_pthread_keys)
+        retval = EINVAL;
+    else
+        retval = pthread_setspecific(pthread_keys[lnxkey], value);
+    pthread_mutex_unlock(&pthread_key_mutex);
+    return retval;
+} // mactrampoline_pthread_getspecific
+
+static void *mactrampoline_pthread_getspecific(uint32_t/*pthread_key_t*/ lnxkey)
+{
+    pthread_mutex_lock(&pthread_key_mutex);
+    pthread_key_t *mackey = (lnxkey < num_pthread_keys) ? &pthread_keys[lnxkey] : NULL;
+    void *retval = mackey ? pthread_getspecific(*mackey) : NULL;
+    pthread_mutex_unlock(&pthread_key_mutex);
+    return retval;
+} // mactrampoline_pthread_getspecific
+
 static int mactrampoline_pthread_once(void/*pthread_once_t*/ *_once, void (*initfn)(void))
 {
     // pthread_once_t is 32-bit on all Linux arches; we can't cram the Mac
