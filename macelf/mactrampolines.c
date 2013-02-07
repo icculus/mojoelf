@@ -1590,6 +1590,11 @@ static int mactrampoline_pthread_once(void/*pthread_once_t*/ *_once, void (*init
     //  version of it into that. Fortunately, it's easy enough to implement
     //  ourselves from scratch.
     // PTHREAD_ONCE_INIT on Linux is just zero, assigned to an int32_t.
+
+    // !!! FIXME: pthread_once() has to guarantee that everything racing on
+    // !!! FIXME:  the same pthread_once_t will not return until initfn()
+    // !!! FIXME:  has returned, whether they were the thread to call it or not.
+
     volatile int32_t *once = (volatile int32_t *) _once;
     if (__sync_val_compare_and_swap(once, 0, 1) == 0)  // were we first?
         initfn();
