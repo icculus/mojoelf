@@ -1,3 +1,4 @@
+rm -rf bin
 mkdir -p bin
 clang -o bin/mojoelf.o \
     -arch i386 -c \
@@ -13,6 +14,12 @@ clang -o bin/mactrampolines.o \
     -I.. -I. -O0 -g -Wall -pipe \
     ./mactrampolines.c
 
+clang -o bin/mactrampolines_sdl12.o \
+    -arch i386 -c -mstackrealign \
+    -I/usr/local/include/SDL \
+    -I.. -I. -O0 -g -Wall -pipe \
+    ./mactrampolines_sdl12.m
+
 clang -o bin/macelf.o \
     -arch i386 -c \
     -I.. -I. -O0 -g -Wall -pipe \
@@ -23,5 +30,5 @@ clang -o bin/hashtable.o \
     -I.. -I. -O0 -g -Wall -pipe \
     ./hashtable.c
 
-clang -arch i386 -g -o macelf bin/mojoelf.o bin/mactrampolines.o bin/macelf.o bin/hashtable.o -liconv
+clang -arch i386 -g -o macelf bin/*.o -liconv -framework Cocoa -framework Carbon
 

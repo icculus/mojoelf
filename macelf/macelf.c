@@ -8,22 +8,17 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#include "mojoelf.h"
+#include "macelf.h"
 #include "hashtable.h"
-
-// !!! FIXME: cut and pasted from mactrampolines.c ...
-#define STUBBED(x) do { \
-    static int seen_this = 0; \
-    if (!seen_this) { \
-        seen_this = 1; \
-        fprintf(stderr, "STUBBED: %s at %s (%s:%d)\n", x, __FUNCTION__, __FILE__, __LINE__); \
-    } \
-} while (0)
 
 static int run_with_missing_symbols = 0;
 static int report_missing_symbols = 0;
 static int symbols_missing = 0;
 static int dependencies_missing = 0;
+
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
+static int native_override_sdl12 = 1;
+#endif
 
 char *program_invocation_name = NULL;
 const char *ld_library_path = NULL;
@@ -41,6 +36,8 @@ typedef struct
 {
     char *soname;
     void *handle;
+    void (*destruct)(void *);
+    void *opaque;
     int refcount;
 } LoadedLibrary;
 
@@ -80,7 +77,7 @@ static int find_soname_file_in_path_list(const char *soname, const char *_list)
 
     while (*ptr)
     {
-        char *sep = strchr(ptr+1, '/');
+        char *sep = strchr(ptr+1, ':');
         if (sep == NULL)
             break;
         *sep = '\0';
@@ -137,6 +134,8 @@ static LoadedLibrary *allocate_loaded_lib(const char *soname, void *handle)
 
     lib->soname = socpy;
     lib->handle = handle;
+    lib->destruct = NULL;
+    lib->opaque = NULL;
     lib->refcount = 1;
     if (hash_insert(loaded_ELFs, socpy, lib) == 1)
     {
@@ -172,6 +171,24 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
          (strcmp(soname, "ld-linux.so.2") == 0) ||
          (strcmp(soname, "librt.so.1") == 0) )
         return allocate_loaded_lib(soname, NULL);
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
+    if ((native_override_sdl12) && (strcmp(soname, "libSDL-1.2.so.0") == 0))
+    {
+        lib = allocate_loaded_lib(soname, NULL);
+        if (lib)
+        {
+            lib->destruct = unload_native_sdl12;
+            lib->opaque = load_native_sdl12();
+            if (!lib->opaque)
+            {
+                mojoelf_unloader(lib);
+                lib = NULL;
+            } // if
+        } // if
+        return lib;
+    } // if
+    #endif
 
     //printf("Trying to load ELF soname '%s'!\n", soname);
     int fd = find_soname_file(soname, rpath, runpath);
@@ -215,8 +232,6 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     return NULL;
 } // mojoelf_loader
 
-
-void missing_symbol_called(const char *missing_symbol);
 
 static void *mojoelf_resolver(void *handle, const char *sym)
 {
@@ -295,6 +310,8 @@ static void nuke_loadedelfs_hash(const void *key, const void *value, void *data)
     LoadedLibrary *lib = (LoadedLibrary *) value;
     //printf("Unloading ELF soname '%s'!\n", lib->soname);
     assert(key == lib->soname);
+    if (lib->destruct)
+        lib->destruct(lib->opaque);
     if (lib->handle != NULL)
         MOJOELF_dlclose(lib->handle);
     free(lib);
@@ -321,8 +338,20 @@ int insert_symbol(const char *sym, void *addr)
     return (hash_insert(resolver_symbols, sym, addr) == 1);
 } // insert_symbol
 
-int build_trampolines(void);  // !!! FIXME: boooo
-int mojoelf_resolver_init(void)
+int remove_symbol(const char *sym)
+{
+    return (hash_remove(resolver_symbols, sym) == 1);
+} // remove_symbol
+
+void warn_missing_native_symbol(const char *lib, const char *fn)
+{
+    fprintf(stderr, "WARNING: Library '%s' doesn't export '%s'!\n", lib, fn);
+    fprintf(stderr, "WARNING:  Trying to use this symbol will either fail or crash.\n");
+    fprintf(stderr, "WARNING:  Go fix your native library!\n");
+} // warn_missing_native_symbol
+
+
+static int mojoelf_resolver_init(void)
 {
     resolver_symbols = hash_create(NULL, hash_hash_string,
                                    hash_keymatch_string, nuke_resolver_hash);
@@ -352,13 +381,51 @@ fail:
 } // mojoelf_resolver_init
 
 
-void mojoelf_resolver_deinit(void)
+static void mojoelf_resolver_deinit(void)
 {
     hash_destroy(resolver_symbols);
     resolver_symbols = NULL;
     hash_destroy(loaded_ELFs);
     loaded_ELFs = NULL;
 } // mojoelf_resolver_deinit
+
+
+static void setup_native_override(const char *item)
+{
+    int setting = 1;
+    if (*item == '-')
+    {
+        item++;
+        setting = 0;
+    } // if
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
+    if (strcmp(item, "sdl12") == 0) { native_override_sdl12 = setting; return; }
+    #endif
+
+    fprintf(stderr, "WARNING: ignoring unknown native override '%s'\n", item);
+} // setup_native_override
+
+
+static void setup_native_overrides(const char *_list)
+{
+    char *list = (char *) alloca(strlen(_list) + 1);
+    strcpy(list, _list);
+
+    char *ptr;
+    for (ptr = list; *ptr; ptr++)
+    {
+        if (*ptr == ',')
+        {
+            *ptr = '\0';
+            setup_native_override(list);
+            list = ptr + 1;
+        } // if
+        ptr++;
+    } // while
+
+    setup_native_override(list);
+} // setup_native_overrides
 
 
 // looks a lot like main(), huh?  :)
@@ -393,9 +460,20 @@ int main(int argc, char **argv, char **envp)
             continue;
         } // else if
 
+        else if (strcmp(arg, "--native-overrides") == 0)
+        {
+            const char *list = argv[++i];
+            if (list == NULL)
+                fprintf(stderr, "WARNING: --native-overrides used with no items.\n");
+            else
+                setup_native_overrides(list);
+            continue;
+        } // else if
+
         else if (strcmp(arg, "--ld-library-path") == 0)
         {
             ld_library_path = argv[++i];
+            continue;
         } // else if
 
         else if (strncmp(arg, "--", 2) == 0)
@@ -416,6 +494,7 @@ int main(int argc, char **argv, char **envp)
         fprintf(stderr, "       --help\n");
         fprintf(stderr, "       --report-missing-symbols\n");
         fprintf(stderr, "       --run-with-missing-symbols\n");
+        fprintf(stderr, "       --native-overrides <options>\n");
         fprintf(stderr, "       --ld-library-path <path>\n");
         fprintf(stderr, "\n");
         return 1;

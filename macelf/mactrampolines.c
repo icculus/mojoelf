@@ -39,19 +39,11 @@
 #include <uuid/uuid.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
+#include <dlfcn.h>
 
-#include "mojoelf.h"
+#include "macelf.h"
 
 extern char **environ;  // !!! FIXME: really? This isn't in a header?
-
-#define STUBBED(x) do { \
-    static int seen_this = 0; \
-    if (!seen_this) { \
-        seen_this = 1; \
-        fprintf(stderr, "STUBBED: %s at %s (%s:%d)\n", x, __FUNCTION__, __FILE__, __LINE__); \
-    } \
-} while (0)
-
 
 #define MACTRAMPOLINE_OVERRIDE(fn)
 
@@ -197,7 +189,6 @@ static size_t mactrampoline___fpending(FILE *io)
     return 0;
 } // mactrampoline___fpending
 
-extern char *program_invocation_name;
 static void mactrampoline_error(int status, int errnum, const char *fmt, ...)
 {
     STUBBED("there are other global vars this function checks");
@@ -838,7 +829,6 @@ static pthread_mutex_t loader_mutex;
 // Obviously we want to map dlopen and friends through MojoELF. We can't let
 //  you talk to Mach-O binaries directly in any case, due to calling
 //  convention differences.
-extern const MOJOELF_Callbacks mojoelf_callbacks;  // !!! FIXME: booo
 static void *mactrampoline_dlopen(const char *fname, int flags)
 {
     STUBBED("trap a few libs like SDL, OpenGL, X11, OpenAL...");
@@ -1602,7 +1592,8 @@ static int mactrampoline_pthread_once(void/*pthread_once_t*/ *_once, void (*init
 } // mactrampoline_pthread_once
 
 
-int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
+// !!! FIXME: this should work like the native overrides, but honestly,
+// !!! FIXME:  who doesn't reference glibc?
 int build_trampolines(void)
 {
     pthread_mutex_init(&loader_mutex, NULL);
