@@ -37,6 +37,8 @@
 #include <setjmp.h>
 #include <pwd.h>
 #include <uuid/uuid.h>
+#include <sys/shm.h>
+#include <sys/sem.h>
 
 #include "mojoelf.h"
 
@@ -677,6 +679,21 @@ static int mactrampoline___fxstat(int ver, int fd, LinuxStat32 *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, fstat, fd);
 } // mactrampoline___fxstat
+
+static int mactrampoline_stat(int ver, const char *path, LinuxStat32 *lnxstat)
+{
+    XSTAT_IMPL(NATIVE_STAT_BITS, stat, path);
+} // mactrampoline_stat
+
+static int mactrampoline_lstat(int ver, const char *path, LinuxStat32 *lnxstat)
+{
+    XSTAT_IMPL(NATIVE_STAT_BITS, lstat, path);
+} // mactrampoline_lstat
+
+static int mactrampoline_fstat(int ver, int fd, LinuxStat32 *lnxstat)
+{
+    XSTAT_IMPL(NATIVE_STAT_BITS, fstat, fd);
+} // mactrampoline_fstat
 
 
 static char *mactrampoline___strdup(const char *str) { return strdup(str); }
@@ -1507,6 +1524,18 @@ static int mactrampoline_pthread_rwlockattr_setpshared(void/*pthread_rwlockattr_
     return pthread_rwlockattr_setpshared(*(pthread_rwlockattr_t **) lnxattr, pshared);
 } // mactrampoline_pthread_rwlockattr_setpshared
 
+
+static int mactrampoline_pthread_once(void/*pthread_once_t*/ *_once, void (*initfn)(void))
+{
+    // pthread_once_t is 32-bit on all Linux arches; we can't cram the Mac
+    //  version of it into that. Fortunately, it's easy enough to implement
+    //  ourselves from scratch.
+    // PTHREAD_ONCE_INIT on Linux is just zero, assigned to an int32_t.
+    volatile int32_t *once = (volatile int32_t *) _once;
+    if (__sync_val_compare_and_swap(once, 0, 1) == 0)  // were we first?
+        initfn();
+    return 0;  // always succeed.
+} // mactrampoline_pthread_once
 
 
 int insert_symbol(const char *fn, void *ptr);  // !!! FIXME: booo
