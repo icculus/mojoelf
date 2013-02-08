@@ -1,3 +1,11 @@
+/**
+ * MojoELF; load ELF binaries from a memory buffer.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
 // You absolutely must build this file with -mstackrealign.
 //  A lot of these functions are here only as a trampoline: the ELF code calls
 //  it, it aligns the stack to 16 bytes thanks to -mstackrealign, and then

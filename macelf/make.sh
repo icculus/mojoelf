@@ -1,3 +1,9 @@
+# MojoELF; load ELF binaries from a memory buffer.
+#
+# Please see the file LICENSE.txt in the source's root directory.
+#
+#  This file written by Ryan C. Gordon.
+
 rm -rf bin
 mkdir -p bin
 clang -o bin/mojoelf.o \
@@ -31,4 +37,6 @@ clang -o bin/hashtable.o \
     ./hashtable.c
 
 clang -arch i386 -g -o macelf bin/*.o -liconv -framework Cocoa -framework Carbon
+
+# end of make.sh ...
 

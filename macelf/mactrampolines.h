@@ -1,3 +1,11 @@
+/**
+ * MojoELF; load ELF binaries from a memory buffer.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
 // Do not #pragma once this file, it's intentionally included multiple times.
 
 // This started as a dump of eglibc's conform/data directory (see dumpfn.pl).
