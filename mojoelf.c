@@ -283,7 +283,9 @@ typedef struct ElfHandle  // this is what MOJOELF_dlopen_*() returns.
     int syms_count;
     ElfSymbols *syms;
     void *entry;
-    void *fini;
+    void *fini;          // single destructor
+    void **fini_array;   // fini array function in shared library.
+    int fini_array_count;  // number of functions in the fini array.
     int dlopens_count;
     void **dlopens;
     MOJOELF_UnloaderCallback unloader;  // unloader callback.
@@ -400,6 +402,8 @@ typedef struct ElfContext
     int dyntabcount;  // PT_DYNAMIC table count.
     uintptr base;  // "base address" for relative addressing.
     void *init;   // init function in shared library.
+    void **init_array;   // init array function in shared library.
+    int init_array_count;  // number of functions in the init array.
     size_t mmaplen;  // number of bytes we want to mmap().
     const char *strtab;  // string table for dynamic symbols.
     size_t strtablen;  // length in bytes of dynamic symbol string table.
@@ -745,11 +749,30 @@ static int walk_dynamic_table(ElfContext *ctx)
         ctx->retval->fini = mmapaddr + (dyntabs[DT_FINI]->d_un.d_ptr-ctx->base);
 
     if (dyntabs[DT_INIT_ARRAY])
-        DLOPEN_FAIL("write me");
-        //if (dyntabs[DT_INIT_ARRAYSZ])
+    {
+        if (dyntabs[DT_INIT_ARRAYSZ] == NULL)
+            DLOPEN_FAIL("No DT_INIT_ARRAYSZ table");
+        else if (dyntabs[DT_INIT_ARRAYSZ]->d_un.d_val % sizeof (void*))
+            DLOPEN_FAIL("Bogus DT_INIT_ARRAYSZ value");
+        else if ((dyntabs[DT_INIT_ARRAY]->d_un.d_ptr - ctx->base) +
+                 dyntabs[DT_INIT_ARRAYSZ]->d_un.d_val >= ctx->buflen)
+            DLOPEN_FAIL("Bogus DT_INIT_ARRAY value");
+        ctx->init_array = (void **) (mmapaddr + (dyntabs[DT_INIT_ARRAY]->d_un.d_ptr-ctx->base));
+        ctx->init_array_count = (int) (dyntabs[DT_INIT_ARRAYSZ]->d_un.d_val / sizeof (void*));
+    } // if
+
     if (dyntabs[DT_FINI_ARRAY])
-        DLOPEN_FAIL("write me");
-        //if (dyntabs[DT_FINI_ARRAYSZ])
+    {
+        if (dyntabs[DT_FINI_ARRAYSZ] == NULL)
+            DLOPEN_FAIL("No DT_FINI_ARRAYSZ table");
+        else if (dyntabs[DT_FINI_ARRAYSZ]->d_un.d_val % sizeof (void*))
+            DLOPEN_FAIL("Bogus DT_FINI_ARRAYSZ value");
+        else if ((dyntabs[DT_FINI_ARRAY]->d_un.d_ptr - ctx->base) +
+                 dyntabs[DT_FINI_ARRAYSZ]->d_un.d_val >= ctx->buflen)
+            DLOPEN_FAIL("Bogus DT_FINI_ARRAY value");
+        ctx->retval->fini_array = (void **) (mmapaddr + (dyntabs[DT_FINI_ARRAY]->d_un.d_ptr-ctx->base));
+        ctx->retval->fini_array_count = (int) (dyntabs[DT_FINI_ARRAYSZ]->d_un.d_val / sizeof (void*));
+    } // if
 
     return 1;
 } // walk_dynamic_table
@@ -1072,7 +1095,12 @@ static int call_so_init(ElfContext *ctx)
     if (ctx->init != NULL)
         ((ElfInitFn) ctx->init)(0, NULL, NULL);
 
-    // !!! FIXME: handle DT_INIT_ARRAYs
+    if (ctx->init_array != NULL)
+    {
+        int i;
+        for (i = 0; i < ctx->init_array_count; i++)
+            ((ElfInitFn) ctx->init_array[i])(0, NULL, NULL);
+    } // if
 
     return 1;
 } // call_so_init
@@ -1163,7 +1191,12 @@ void MOJOELF_dlclose(void *lib)
     if (h == NULL)
         return;
 
-    // !!! FIXME: handle DT_FINI_ARRAYs (must be called before DT_FINI!)
+    // ELF spec says FINI_ARRAY is executed in reverse order, so count down.
+    if (h->fini_array != NULL)
+    {
+        for (i = h->fini_array_count-1; i >= 0; i--)
+            ((ElfFiniFn) h->fini_array[i])();
+    } // if
 
     if (h->fini != NULL)
         ((ElfFiniFn) h->fini)();
