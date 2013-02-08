@@ -14,7 +14,8 @@
 // (stat), some probably don't exist or are just not something I know about.
 // Add back in what's appropriate, write some bridge functions for the rest.
 
-// Variations on printf/scanf that we are largely macro glue.
+// Variations on printf/scanf that are largely macro glue.
+// !!! FIXME: GNU's *scanf() expects "%a" to allocate data. Mac's doesn't do that.
 MACTRAMPOLINE_PRINTF(printf, (const char *fmt, ...), (fmt, ap))
 MACTRAMPOLINE_PRINTF(fprintf, (FILE *io, const char *fmt, ...), (io, fmt, ap))
 MACTRAMPOLINE_PRINTF(sprintf, (char *str, const char *fmt, ...), (str, fmt, ap))
@@ -46,6 +47,9 @@ MACTRAMPOLINE_OVERRIDE(__memcpy_chk)
 MACTRAMPOLINE_OVERRIDE(__strcpy_chk)
 MACTRAMPOLINE_OVERRIDE(__strncpy_chk)
 MACTRAMPOLINE_OVERRIDE(__snprintf_chk)
+MACTRAMPOLINE_OVERRIDE(__isoc99_scanf)
+MACTRAMPOLINE_OVERRIDE(__isoc99_fscanf)
+MACTRAMPOLINE_OVERRIDE(__isoc99_sscanf)
 MACTRAMPOLINE_OVERRIDE(fputs_unlocked)
 MACTRAMPOLINE_OVERRIDE(fwrite_unlocked)
 MACTRAMPOLINE_OVERRIDE(creat)
@@ -284,8 +288,6 @@ MACTRAMPOLINE_OVERRIDE(inet_pton)
 MACTRAMPOLINE_OVERRIDE(setsockopt)
 MACTRAMPOLINE_OVERRIDE(getsockopt)
 
-
-//MACTRAMPOLINE_OVERRIDE(__isoc99_sscanf)
 
 // !!! FIXME: mode_t is 2 bytes on Mac OS X, but 4 on Linux.
 //MACTRAMPOLINE(DBM*,dbm_open,(const char *a, int b, mode_t c),(a,b,c),return)

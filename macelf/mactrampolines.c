@@ -213,6 +213,35 @@ static void mactrampoline___stack_chk_fail(void)
     _exit(1);
 } // mactrampoline___stack_chk_fail
 
+// The Mac versions of *scanf() already work like ISO C99 (%a doesn't work like GNU).
+static int mactrampoline___isoc99_fscanf(FILE *io, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vfscanf(io, fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___isoc99_fscanf
+
+static int mactrampoline___isoc99_scanf(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vscanf(fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___isoc99_scanf
+
+static int mactrampoline___isoc99_sscanf(const char *str, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vsscanf(str, fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___isoc99_sscanf
+
+
 // Just use the "locked" versions for now, since the unlocked don't exist.
 static int mactrampoline_fputs_unlocked(const char *str, FILE *io)
 {
