@@ -13,10 +13,6 @@
 
 // just some things shared between source files...
 
-#ifndef MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
-#define MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12 1
-#endif
-
 #if 0
 #define STUBBED(x) do {} while (0)
 #else
@@ -42,9 +38,20 @@ void *mactrampoline_dlsym(void *lib, const char *sym);
 int mactrampoline_dlclose(void *lib);
 char *mactrampoline_dlerror(void);
 
+#ifndef MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
+#define MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12 1
+#endif
 #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
 void *load_native_sdl12(void);
 void unload_native_sdl12(void *handle);
+#endif
+
+#ifndef MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
+#define MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL 1
+#endif
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
+void *load_native_opengl(void);
+void unload_native_opengl(void *handle);
 #endif
 
 #endif

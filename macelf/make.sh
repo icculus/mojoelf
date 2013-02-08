@@ -26,6 +26,14 @@ clang -o bin/mactrampolines_sdl12.o \
     -I.. -I. -O0 -g -Wall -pipe \
     ./mactrampolines_sdl12.m
 
+cd tools
+perl -w ./dumpglfn.pl >../mactrampolines_opengl.h
+cd ..
+clang -o bin/mactrampolines_opengl.o \
+    -arch i386 -c -mstackrealign \
+    -I.. -I. -O0 -g -Wall -pipe \
+    ./mactrampolines_opengl.c
+
 clang -o bin/macelf.o \
     -arch i386 -c \
     -I.. -I. -O0 -g -Wall -pipe \

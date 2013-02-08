@@ -28,6 +28,10 @@ static int dependencies_missing = 0;
 static int native_override_sdl12 = 1;
 #endif
 
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
+static int native_override_opengl = 1;
+#endif
+
 char *program_invocation_name = NULL;
 const char *ld_library_path = NULL;
 
@@ -180,23 +184,29 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
          (strcmp(soname, "librt.so.1") == 0) )
         return allocate_loaded_lib(soname, NULL);
 
+    #define DO_OVERRIDE(module, sonamestr) \
+        if ((native_override_##module) && (strcmp(soname, sonamestr) == 0)) { \
+            lib = allocate_loaded_lib(soname, NULL); \
+            if (lib) { \
+                lib->destruct = unload_native_##module; \
+                lib->opaque = load_native_##module(); \
+                if (!lib->opaque) { \
+                    mojoelf_unloader(lib); \
+                    lib = NULL; \
+                } \
+            } \
+            return lib; \
+        }
+
     #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
-    if ((native_override_sdl12) && (strcmp(soname, "libSDL-1.2.so.0") == 0))
-    {
-        lib = allocate_loaded_lib(soname, NULL);
-        if (lib)
-        {
-            lib->destruct = unload_native_sdl12;
-            lib->opaque = load_native_sdl12();
-            if (!lib->opaque)
-            {
-                mojoelf_unloader(lib);
-                lib = NULL;
-            } // if
-        } // if
-        return lib;
-    } // if
+    DO_OVERRIDE(sdl12, "libSDL-1.2.so.0");
     #endif
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
+    DO_OVERRIDE(opengl, "libGL.so.1");  // oh, OpenGL. A hardware-specific SO in userspace.  :/
+    #endif
+
+    #undef DO_OVERRIDE
 
     //printf("Trying to load ELF soname '%s'!\n", soname);
     int fd = find_soname_file(soname, rpath, runpath);
@@ -406,10 +416,27 @@ static void setup_native_override(const char *item)
         item++;
         setting = 0;
     } // if
+    else if (*item == '+')
+    {
+        item++;
+        setting = 1;
+    } // if
+
+    #define DO_OVERRIDE(module) \
+        if (strcmp(item, #module) == 0) { \
+            native_override_##module = setting; \
+            return; \
+        }
 
     #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
-    if (strcmp(item, "sdl12") == 0) { native_override_sdl12 = setting; return; }
+    DO_OVERRIDE(sdl12)
     #endif
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
+    DO_OVERRIDE(opengl)
+    #endif
+
+    #undef DO_OVERRIDE
 
     fprintf(stderr, "WARNING: ignoring unknown native override '%s'\n", item);
 } // setup_native_override
