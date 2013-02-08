@@ -8,14 +8,13 @@
 
 // Do not #pragma once this file, it's intentionally included multiple times.
 
-//MACTRAMPOLINE(void *,SDL_LoadObject,(const char *a),(a),return)
-//MACTRAMPOLINE(void *,SDL_LoadFunction,(void *a, const char *b),(a,b),return)
-//MACTRAMPOLINE(void,SDL_UnloadObject,(void *a),(a),)
-//MACTRAMPOLINE(int,SDL_GL_LoadLibrary,(const char *a),(a),return)
-//MACTRAMPOLINE(void *,SDL_GL_GetProcAddress,(const char *a),(a),return)
-//MACTRAMPOLINE(void,SDL_SetError,(const char *fmt, ...)
-
-//MACTRAMPOLINE(int,SDL_Init,(Uint32 a),(a),return)
+MACTRAMPOLINE_OVERRIDE(int,SDL_Init,(Uint32 a))
+MACTRAMPOLINE_OVERRIDE(void *,SDL_LoadObject,(const char *a))
+MACTRAMPOLINE_OVERRIDE(void *,SDL_LoadFunction,(void *a, const char *b))
+MACTRAMPOLINE_OVERRIDE(void,SDL_UnloadObject,(void *a))
+MACTRAMPOLINE_OVERRIDE(int,SDL_GL_LoadLibrary,(const char *a))
+MACTRAMPOLINE_OVERRIDE(void *,SDL_GL_GetProcAddress,(const char *a))
+MACTRAMPOLINE_OVERRIDE(void,SDL_SetError,(const char *fmt, ...))
 
 MACTRAMPOLINE(int,SDL_InitSubSystem,(Uint32 a),(a),return)
 MACTRAMPOLINE(void,SDL_QuitSubSystem,(Uint32 a),(a),)

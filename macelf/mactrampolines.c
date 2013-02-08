@@ -837,7 +837,8 @@ static pthread_mutex_t loader_mutex;
 // Obviously we want to map dlopen and friends through MojoELF. We can't let
 //  you talk to Mach-O binaries directly in any case, due to calling
 //  convention differences.
-static void *mactrampoline_dlopen(const char *fname, int flags)
+// These aren't static, because other sources need to use them.
+void *mactrampoline_dlopen(const char *fname, int flags)
 {
     STUBBED("trap a few libs like SDL, OpenGL, X11, OpenAL...");
     STUBBED("flags are ignored");
@@ -847,7 +848,7 @@ static void *mactrampoline_dlopen(const char *fname, int flags)
     return retval;
 } // mactrampoline_dlopen
 
-static void *mactrampoline_dlsym(void *lib, const char *sym)
+void *mactrampoline_dlsym(void *lib, const char *sym)
 {
     pthread_mutex_lock(&loader_mutex);
     void *retval = MOJOELF_dlsym(lib, sym);
@@ -855,7 +856,7 @@ static void *mactrampoline_dlsym(void *lib, const char *sym)
     return retval;
 } // mactrampoline_dlsym
 
-static int mactrampoline_dlclose(void *lib)
+int mactrampoline_dlclose(void *lib)
 {
     pthread_mutex_lock(&loader_mutex);
     MOJOELF_dlclose(lib);
@@ -863,7 +864,7 @@ static int mactrampoline_dlclose(void *lib)
     return 0;
 } // mactrampoline_dlclose
 
-static char *mactrampoline_dlerror(void)
+char *mactrampoline_dlerror(void)
 {
     STUBBED("This should make a temp copy if this is really non-const");
     return (char *) MOJOELF_dlerror();

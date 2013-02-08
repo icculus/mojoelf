@@ -37,6 +37,10 @@ int insert_symbol(const char *fn, void *ptr);
 int remove_symbol(const char *fn);
 void missing_symbol_called(const char *missing_symbol);
 void warn_missing_native_symbol(const char *lib, const char *fn);
+void *mactrampoline_dlopen(const char *fname, int flags);
+void *mactrampoline_dlsym(void *lib, const char *sym);
+int mactrampoline_dlclose(void *lib);
+char *mactrampoline_dlerror(void);
 
 #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
 void *load_native_sdl12(void);
