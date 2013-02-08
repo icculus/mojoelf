@@ -48,6 +48,7 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <dlfcn.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
