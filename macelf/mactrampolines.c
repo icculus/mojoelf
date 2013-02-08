@@ -48,6 +48,9 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <dlfcn.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <arpa/inet.h>
 
 #include "macelf.h"
 
@@ -353,6 +356,42 @@ static char *mactrampoline_dcgettext(const char *domain, const char *msgid, int 
     STUBBED("write me");
     return (char *) msgid;
 } // mactrampoline_dcgettext
+
+static int32_t **mactrampoline___ctype_tolower_loc(void)
+{
+    STUBBED("this should be thread-local");
+    STUBBED("...and not a race condition.");
+    STUBBED("...actually, this whole thing is probably wrong anyhow.");
+    static int32_t tolower_array[384];
+    static int32_t *ptolower_array = tolower_array + 128;
+    static int initialized = 0;
+    if (!initialized)
+    {
+        int i;
+        for (i = -128; i < 256; i++)
+            tolower_array[i + 128] = (int32_t) tolower(i);
+        initialized = 1;
+    } // if
+    return &ptolower_array;
+} // mactrampoline__ctype_tolower_loc
+
+static int32_t **mactrampoline___ctype_toupper_loc(void)
+{
+    STUBBED("this should be thread-local");
+    STUBBED("...and not a race condition.");
+    STUBBED("...actually, this whole thing is probably wrong anyhow.");
+    static int32_t toupper_array[384];
+    static int32_t *ptoupper_array = toupper_array + 128;
+    static int initialized = 0;
+    if (!initialized)
+    {
+        int i;
+        for (i = -128; i < 256; i++)
+            toupper_array[i + 128] = (int32_t) toupper(i);
+        initialized = 1;
+    } // if
+    return &ptoupper_array;
+} // mactrampoline__ctype_toupper_loc
 
 static const unsigned short **mactrampoline___ctype_b_loc(void)
 {
@@ -1703,6 +1742,265 @@ static int mactrampoline_pthread_once(void/*pthread_once_t*/ *_once, void (*init
         initfn();
     return 0;  // always succeed.
 } // mactrampoline_pthread_once
+
+
+
+// The things we (probably) care about are AF_UNIX, AF_INET, and AF_INET6.
+//  Most of the other ones don't match up, but they aren't things we care about.
+//  AF_UNIX and AF_INET use the same values as Mac OS X. AF_INET6 doesn't.
+#define LINUX_AF_INET6 10
+
+static size_t get_sockaddr_len(const int family)
+{
+    switch (family)
+    {
+        case AF_UNIX: return sizeof (struct sockaddr_un);
+        case AF_INET: return sizeof (struct sockaddr_in);
+        case AF_INET6: return sizeof (struct sockaddr_in6);
+    } // switch
+    return 0;
+} // get_sockaddr_len
+
+static inline int supported_socket_family(const int family)
+{
+    return (get_sockaddr_len(family) != 0);
+} // supported_socket_family
+
+static int linux_sockaddr_to_mac(void *macaddr, const void *lnxaddr)
+{
+    uint16_t family = *((uint16_t *) lnxaddr);
+    if (family == LINUX_AF_INET6)
+        family = AF_INET6;
+
+    const size_t structlen = get_sockaddr_len(family);
+    if (!structlen)
+    {
+        errno = ENOTSUP;
+        return 0;
+    } // if
+
+    // the things we currently care about all match sizes.
+    memcpy(macaddr, lnxaddr, structlen);
+
+    // Linux uses 16 bits for the family, Mac uses 8 for the struct size, 8 for the family.
+    uint8_t *ptr = (uint8_t *) macaddr;
+    *(ptr++) = (uint8_t) structlen;
+    *(ptr++) = (uint8_t) family;
+
+    return 1;
+} // linux_sockaddr_to_mac
+
+static int mac_sockaddr_to_linux(void *lnxaddr, const void *macaddr)
+{
+    // The things we (probably) care about are AF_UNIX, AF_INET, and AF_INET6.
+    //  Most of the other ones don't match up, but they aren't things we care about.
+    const uint8_t structlen = ((uint8_t *) macaddr)[0];
+    uint8_t family = ((uint8_t *) macaddr)[1];
+
+    if (family == AF_INET6)
+        family = LINUX_AF_INET6;
+
+    if (!supported_socket_family(family))
+    {
+        errno = ENOTSUP;
+        return 0;
+    } // if
+
+    // the things we currently care about all match sizes.
+    memcpy(lnxaddr, macaddr, (size_t) structlen);
+
+    // Linux uses 16 bits for the family, Mac uses 8 for the struct size, 8 for the family.
+    uint16_t *ptr = (uint16_t *) lnxaddr;
+    *ptr = (uint16_t) family;
+
+    return 1;
+} // mac_sockaddr_to_linux
+
+static int mactrampoline_accept(int fd, void/*struct sockaddr*/ *addr, socklen_t *len)
+{
+    struct sockaddr_storage macaddr;
+    const int rc = accept(fd, (struct sockaddr *) &macaddr, len);
+    if (rc == -1)
+        return -1;
+
+    if (!mac_sockaddr_to_linux(addr, &macaddr))
+    {
+        close(rc);  // oh well.
+        return -1;
+    } // if
+
+    return rc;
+} // mactrampoline_accept
+
+static int mactrampoline_bind(int fd, const void/*struct sockaddr*/ *addr, socklen_t len)
+{
+    struct sockaddr_storage macaddr;
+    if (!linux_sockaddr_to_mac(&macaddr, addr))
+        return -1;
+    return bind(fd, (struct sockaddr *) &macaddr, len);
+} // mactrampoline_bind
+
+static int mactrampoline_connect(int fd, const void/*struct sockaddr*/ *addr, socklen_t len)
+{
+    struct sockaddr_storage macaddr;
+    if (!linux_sockaddr_to_mac(&macaddr, addr))
+        return -1;
+    return connect(fd, (struct sockaddr *) &macaddr, len);
+} // mactrampoline_connect
+
+static int mactrampoline_getpeername(int fd, void/*struct sockaddr*/ *addr, socklen_t *len)
+{
+    struct sockaddr_storage macaddr;
+    const int rc = getpeername(fd, (struct sockaddr *) &macaddr, len);
+    if (rc == -1)
+        return -1;
+    else if (!mac_sockaddr_to_linux(addr, &macaddr))
+        return -1;
+    return 0;
+} // mactrampoline_getpeername
+
+static int mactrampoline_getsockname(int fd, void/*struct sockaddr*/ *addr, socklen_t *len)
+{
+    struct sockaddr_storage macaddr;
+    const int rc = getsockname(fd, (struct sockaddr *) &macaddr, len);
+    if (rc == -1)
+        return -1;
+    else if (!mac_sockaddr_to_linux(addr, &macaddr))
+        return -1;
+    return 0;
+} // mactrampoline_getsockname
+
+typedef enum
+{
+    LINUX_NI_NUMERICHOST=1,
+    LINUX_NI_NUMERICSERV=2,
+    LINUX_NI_NOFQDN=4,
+    LINUX_NI_NAMEREQD=8,
+    LINUX_NI_DGRAM=16
+} LinuxGetNameInfoFlags;
+
+static int mactrampoline_getnameinfo(const void/*struct sockaddr*/ *addr, socklen_t addrlen, char *host, socklen_t hostlen, char *service, socklen_t servlen, int lnxflags)
+{
+    struct sockaddr_storage macaddr;
+    int macflags = 0;
+
+    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~fl; }
+    CVTFLAG(NI_NUMERICHOST);
+    CVTFLAG(NI_NUMERICSERV);
+    CVTFLAG(NI_NOFQDN);
+    CVTFLAG(NI_NAMEREQD);
+    CVTFLAG(NI_DGRAM);
+    #undef CVTFLAG
+
+    if (lnxflags != 0)
+    {
+        errno = EINVAL;
+        return -1;  // flag we don't handle.
+    } // if
+
+    if (!linux_sockaddr_to_mac(&macaddr, addr))
+        return -1;
+
+    return getnameinfo((struct sockaddr *) &macaddr, addrlen, host, hostlen, service, servlen, macflags);
+} // mactrampoline_getnameinfo
+
+static const char *mactrampoline_inet_ntop(int family, const void *src, char *dst, socklen_t len)
+{
+    if (family == LINUX_AF_INET6)
+        family = AF_INET6;
+    if (!supported_socket_family(family))
+    {
+        errno = EAFNOSUPPORT;
+        return NULL;
+    } // if
+    return inet_ntop(family, src, dst, len);
+} // mactrampoline_inet_ntop
+
+static int mactrampoline_inet_pton(int family, const char *src, void *dst)
+{
+    if (family == LINUX_AF_INET6)
+        family = AF_INET6;
+    if (!supported_socket_family(family))
+    {
+        errno = EAFNOSUPPORT;
+        return -1;
+    } // if
+    return inet_pton(family, src, dst);
+} // mactrampoline_inet_pton
+
+
+#define LINUX_SOL_SOCKET 1
+typedef enum
+{
+    LINUX_SO_DEBUG=1,
+    LINUX_SO_REUSEADDR=2,
+    LINUX_SO_TYPE=3,
+    LINUX_SO_ERROR=4,
+    LINUX_SO_DONTROUTE=5,
+    LINUX_SO_BROADCAST=6,
+    LINUX_SO_SNDBUF=7,
+    LINUX_SO_RCVBUF=8,
+    LINUX_SO_KEEPALIVE=9,
+    LINUX_SO_OOBINLINE=10,
+    LINUX_SO_LINGER=13,
+    //LINUX_SO_BSDCOMPAT=14,
+    LINUX_SO_RCVLOWAT=18,
+    LINUX_SO_SNDLOWAT=19,
+    LINUX_SO_RCVTIMEO=20,
+    LINUX_SO_SNDTIMEO=21,
+} LinuxSocketOptions;
+
+static int linux_sockopt_to_mac(const int lnxopt)
+{
+    switch ((LinuxSocketOptions) lnxopt)
+    {
+        #define CVTSOCKOPT(opt) case LINUX_##opt: return opt
+        CVTSOCKOPT(SO_DEBUG);
+        CVTSOCKOPT(SO_REUSEADDR);
+        CVTSOCKOPT(SO_TYPE);
+        CVTSOCKOPT(SO_ERROR);
+        CVTSOCKOPT(SO_DONTROUTE);
+        CVTSOCKOPT(SO_BROADCAST);
+        CVTSOCKOPT(SO_SNDBUF);
+        CVTSOCKOPT(SO_RCVBUF);
+        CVTSOCKOPT(SO_KEEPALIVE);
+        CVTSOCKOPT(SO_OOBINLINE);
+        CVTSOCKOPT(SO_LINGER);
+        CVTSOCKOPT(SO_RCVLOWAT);
+        CVTSOCKOPT(SO_SNDLOWAT);
+        CVTSOCKOPT(SO_RCVTIMEO);
+        CVTSOCKOPT(SO_SNDTIMEO);
+        #undef CVTSOCKOPT
+    } // switch
+
+    return -1;
+} // linux_sockopt_to_mac
+
+static int mactrampoline_setsockopt(int fd, int level, int option, const void *value, socklen_t len)
+{
+    if (level == LINUX_SOL_SOCKET)
+        level = SOL_SOCKET;
+    option = linux_sockopt_to_mac(option);
+    if (option == -1)
+    {
+        errno = ENOTSUP;
+        return -1;
+    } // if
+    return setsockopt(fd, level, option, value, len);
+} // mactrampoline_setsockopt
+
+static int mactrampoline_getsockopt(int fd, int level, int option, void *value, socklen_t *len)
+{
+    if (level == LINUX_SOL_SOCKET)
+        level = SOL_SOCKET;
+    option = linux_sockopt_to_mac(option);
+    if (option == -1)
+    {
+        errno = ENOTSUP;
+        return -1;
+    } // if
+    return getsockopt(fd, level, option, value, len);
+} // mactrampoline_getsockopt
 
 
 // !!! FIXME: this should work like the native overrides, but honestly,
