@@ -166,11 +166,41 @@ static int mactrampoline___vsnprintf_chk(char *buf, size_t maxbuflen, int flag, 
     return retval;
 } // mactrampoline___vsnprintf_chk
 
-static char *mactrampoline___strcat_chk(char *dst, const char *src, size_t len)
+static int mactrampoline___snprintf_chk(char *buf, size_t maxbuflen, int flag, size_t buflen, const char *fmt, ...)
 {
     STUBBED("check flag (and stack!)");
+    STUBBED("this should abort if buflen < maxbuflen");
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = vsnprintf(buf, buflen, fmt, ap);
+    va_end(ap);
+    return retval;
+} // mactrampoline___snprintf_chk
+
+static char *mactrampoline___strcat_chk(char *dst, const char *src, size_t len)
+{
+    STUBBED("check for overflow?");
     return strcat(dst, src);
-} // __strcat_chk
+} // mactrampoline___strcat_chk
+
+static void *mactrampoline___memcpy_chk(void *dst, const void *src, size_t len, size_t dstlen)
+{
+    STUBBED("check for overflow?");
+    STUBBED("this should abort if len > dstlen");
+    return memcpy(dst, src, len);
+} // mactrampoline___memcpy_chk
+
+static char *mactrampoline___strcpy_chk(char *dst, const char *src, size_t dstlen)
+{
+    STUBBED("check for overflow?");
+    return strcpy(dst, src);
+} // mactrampoline___strcpy_chk
+
+static char *mactrampoline___strncpy_chk(char *dst, const char *src, size_t len, size_t dstlen)
+{
+    STUBBED("check for overflow?");
+    return strncpy(dst, src, len);
+} // mactrampoline___strncpy_chk
 
 static void mactrampoline___stack_chk_fail(void)
 {
@@ -259,15 +289,20 @@ static /*mode_t*/uint32_t mactrampoline_umask(/*mode_t*/uint32_t a)
 
 
 // off_t is 32-bit on x86 Linux, 64-bit on amd64 Linux, 64-bit everywhere on Mac OS X.
-static int mactrampoline_ftruncate(int fd, /*off_t*/uintptr_t len)
+static int mactrampoline_ftruncate(int fd, /*off_t*/intptr_t len)
 {
     return ftruncate(fd, (off_t) len);
 } // mactrampoline_ftruncate
 
-static /*off_t*/uintptr_t mactrampoline_lseek(int fd, /*off_t*/uintptr_t offset, int whence)
+static intptr_t/*off_t*/ mactrampoline_lseek(int fd, /*off_t*/intptr_t offset, int whence)
 {
-    return (uintptr_t) lseek(fd, (off_t) offset, whence);
+    return (intptr_t) lseek(fd, (off_t) offset, whence);
 } // mactrampoline_lseek
+
+static int64_t/*off64_t*/ mactrampoline_lseek64(int fd, int64_t/*off64_t*/ offset, int whence)
+{
+    return (int64_t) lseek(fd, (off_t) offset, whence);
+} // mactrampoline_lseek64
 
 static ssize_t mactrampoline_pread(int fd, void *buf, size_t len, /*off_t*/uintptr_t offset)
 {
@@ -828,6 +863,38 @@ SINCOS_IMPL(f,float)
 SINCOS_IMPL(l,long double)
 #undef SINCOS_IMPL
 
+// !!! FIXME: strictly speaking, this should be optimizable to do the right
+// !!! FIXME:  thing faster under the assumption that the input is finite.
+// !!! FIXME:  But this should still return correct results at a speed hit.
+#define TRIG_TRAMP_FINITE(fn) \
+    static double mactrampoline___##fn##_finite(double x) { return fn(x); } \
+    static float mactrampoline___##fn##f_finite(float x) { return fn##f(x); } \
+    static long double mactrampoline___##fn##l_finite(long double x) { return fn##l(x); }
+TRIG_TRAMP_FINITE(sin)
+TRIG_TRAMP_FINITE(cos)
+TRIG_TRAMP_FINITE(tan)
+TRIG_TRAMP_FINITE(log)
+TRIG_TRAMP_FINITE(log2)
+TRIG_TRAMP_FINITE(log10)
+TRIG_TRAMP_FINITE(log1p)
+TRIG_TRAMP_FINITE(asin)
+TRIG_TRAMP_FINITE(acos)
+TRIG_TRAMP_FINITE(atan)
+TRIG_TRAMP_FINITE(sinh)
+TRIG_TRAMP_FINITE(cosh)
+TRIG_TRAMP_FINITE(tanh)
+TRIG_TRAMP_FINITE(exp)
+TRIG_TRAMP_FINITE(exp2)
+TRIG_TRAMP_FINITE(expm1)
+#undef TRIG_TRAMP_FINITE
+
+static double mactrampoline___atan2_finite(double x, double y) { return atan2(x, y); }
+static float mactrampoline___atan2f_finite(float x, float y) { return atan2f(x, y); }
+static long double mactrampoline___atan2l_finite(long double x, long double y) { return atan2l(x, y); }
+static double mactrampoline___pow_finite(double x, double y) { return pow(x, y); }
+static float mactrampoline___powf_finite(float x, float y) { return powf(x, y); }
+static long double mactrampoline___powl_finite(long double x, long double y) { return powl(x, y); }
+
 
 // We only need a mutex for our global state during the
 //  dlopen/dlsym/dlclone() trampolines. Initial loading happens on the main
@@ -875,9 +942,17 @@ static int mactrampoline_ioctl(int fd, int req, ...)
 {
     STUBBED("this is going to need a bunch of complexity");
     fprintf(stderr, "WARNING: unhandled ioctl(%d, %d, ...) called!\n", fd, req);
+    errno = ENOTSUP;
     return -1;
 } // mactrampoline_ioctl
 
+static int mactrampoline_fcntl(int fd, int cmd, ...)
+{
+    STUBBED("this is going to need a bunch of complexity");
+    fprintf(stderr, "WARNING: unhandled fcntl(%d, %d, ...) called!\n", fd, cmd);
+    errno = ENOTSUP;
+    return -1;
+} // mactrampoline_fcntl
 
 typedef struct LinuxDirEnt32
 {
@@ -1149,6 +1224,35 @@ static void mactrampoline___assert_fail(const char *assertion, const char *fname
     fflush(stderr);
     abort();
 } // mactrampoline___assert_fail
+
+
+static int mactrampoline_getrlimit(int resource, struct rlimit *limit)
+{
+    STUBBED("write me");
+    errno = ENOTSUP;
+    return -1;
+} // mactrampoline_getrlimit
+
+static int mactrampoline_setrlimit(int resource, const struct rlimit *limit)
+{
+    STUBBED("write me");
+    errno = ENOTSUP;
+    return -1;
+} // mactrampoline_setrlimit
+
+static int mactrampoline_getrlimit64(int resource, struct rlimit *limit)
+{
+    STUBBED("write me");
+    errno = ENOTSUP;
+    return -1;
+} // mactrampoline_getrlimit64
+
+static int mactrampoline_setrlimit64(int resource, const struct rlimit *limit)
+{
+    STUBBED("write me");
+    errno = ENOTSUP;
+    return -1;
+} // mactrampoline_setrlimit64
 
 static pid_t mactrampoline_waitpid(pid_t pid, int *status, int options)
 {
