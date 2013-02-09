@@ -190,5 +190,5 @@ void unload_native_sdl12(void *handle)
 
 #endif
 
-// end of mactrampolines_sdl12.c ...
+// end of mactrampolines_sdl12.m ...
 
