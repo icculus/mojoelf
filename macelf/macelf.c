@@ -211,7 +211,9 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     #endif
 
     #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
-    DO_OVERRIDE(openal, "libopenal.so.1");
+    if ((native_override_openal) && (strcmp(soname, "libopenal.so.1") == 0))
+        soname = "libopenal.so.0";   // !!! FIXME: I'm not sure why the version changed...?
+    DO_OVERRIDE(openal, "libopenal.so.0");
     #endif
 
     #undef DO_OVERRIDE
