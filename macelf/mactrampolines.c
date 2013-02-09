@@ -52,6 +52,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+#include <libgen.h>
 
 #include "macelf.h"
 
@@ -201,6 +204,27 @@ static char *mactrampoline___strcat_chk(char *dst, const char *src, size_t len)
     return strcat(dst, src);
 } // mactrampoline___strcat_chk
 
+static char *mactrampoline___strncat_chk(char *dst, const char *src, size_t len, size_t dstlen)
+{
+    STUBBED("check for overflow?");
+    STUBBED("this should abort if len > dstlen");
+    return strncat(dst, src, len);
+} // mactrampoline___strncat_chk
+
+static void *mactrampoline___memset_chk(void *dst, int ch, size_t len, size_t dstlen)
+{
+    STUBBED("check for overflow?");
+    STUBBED("this should abort if len > dstlen");
+    return memset(dst, ch, len);
+} // mactrampoline___memset_chk
+
+static void *mactrampoline___memmove_chk(void *dst, const void *src, size_t len, size_t dstlen)
+{
+    STUBBED("check for overflow?");
+    STUBBED("this should abort if len > dstlen");
+    return memmove(dst, src, len);
+} // mactrampoline___memmove_chk
+
 static void *mactrampoline___memcpy_chk(void *dst, const void *src, size_t len, size_t dstlen)
 {
     STUBBED("check for overflow?");
@@ -254,6 +278,26 @@ static int mactrampoline___isoc99_sscanf(const char *str, const char *fmt, ...)
     va_end(ap);
     return retval;
 } // mactrampoline___isoc99_sscanf
+
+static double mactrampoline___strtod_internal(const char *nptr, char **endptr, int group)
+{
+    if (group != 0)
+        STUBBED("LSB expects group to be unconditionally zero");
+    return strtod(nptr, endptr);
+} // mactrampoline___strtod_internal
+
+static long mactrampoline___strtol_internal(const char *nptr, char **endptr, int radix, int group)
+{
+    if (group != 0)
+        STUBBED("LSB expects group to be unconditionally zero");
+    return strtol(nptr, endptr, radix);
+} // mactrampoline___strtol_internal
+
+static char *mactrampoline___xpg_basename(const char *path)
+{
+    STUBBED("need to decide if this every overwrites (path), and if that's okay");
+    return basename((char *) path);
+} // mactrampoline___xpg_basename
 
 
 // Just use the "locked" versions for now, since the unlocked don't exist.
