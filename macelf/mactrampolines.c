@@ -170,6 +170,20 @@ static int mactrampoline___vsnprintf_chk(char *buf, size_t maxbuflen, int flag, 
     return retval;
 } // mactrampoline___vsnprintf_chk
 
+static int mactrampoline___vasprintf_chk(char **result, int flag, size_t buflen, const char *fmt, va_list ap)
+{
+    STUBBED("check flag (and stack!)");
+    const int retval = vasprintf(result, fmt, ap);
+    return retval;
+} // mactrampoline___vsnprintf_chk
+
+static int mactrampoline___vfprintf_chk(FILE *io, int flag, const char *fmt, va_list ap)
+{
+    STUBBED("check flag (and stack!)");
+    const int retval = vfprintf(io, fmt, ap);
+    return retval;
+} // mactrampoline___vfprintf_chk
+
 static int mactrampoline___snprintf_chk(char *buf, size_t maxbuflen, int flag, size_t buflen, const char *fmt, ...)
 {
     STUBBED("check flag (and stack!)");
