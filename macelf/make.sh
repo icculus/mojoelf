@@ -34,6 +34,11 @@ clang -o bin/mactrampolines_opengl.o \
     -I.. -I. -O0 -g -Wall -pipe \
     ./mactrampolines_opengl.c
 
+clang -o bin/mactrampolines_openal.o \
+    -arch i386 -c -mstackrealign \
+    -I.. -I. -O0 -g -Wall -pipe \
+    ./mactrampolines_openal.c
+
 clang -o bin/macelf.o \
     -arch i386 -c \
     -I.. -I. -O0 -g -Wall -pipe \

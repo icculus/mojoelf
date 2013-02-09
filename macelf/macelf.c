@@ -32,6 +32,10 @@ static int native_override_sdl12 = 1;
 static int native_override_opengl = 1;
 #endif
 
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
+static int native_override_openal = 1;
+#endif
+
 char *program_invocation_name = NULL;
 const char *ld_library_path = NULL;
 
@@ -206,6 +210,10 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     DO_OVERRIDE(opengl, "libGL.so.1");  // oh, OpenGL. A hardware-specific SO in userspace.  :/
     #endif
 
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
+    DO_OVERRIDE(openal, "libopenal.so.1");
+    #endif
+
     #undef DO_OVERRIDE
 
     //printf("Trying to load ELF soname '%s'!\n", soname);
@@ -356,6 +364,13 @@ int insert_symbol(const char *sym, void *addr)
     return (hash_insert(resolver_symbols, sym, addr) == 1);
 } // insert_symbol
 
+void *find_symbol(const char *sym)
+{
+    const void *addr = NULL;
+    hash_find(resolver_symbols, sym, &addr);
+    return (void *) addr;
+} // find_symbol
+
 int remove_symbol(const char *sym)
 {
     return (hash_remove(resolver_symbols, sym) == 1);
@@ -434,6 +449,10 @@ static void setup_native_override(const char *item)
 
     #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
     DO_OVERRIDE(opengl)
+    #endif
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
+    DO_OVERRIDE(openal)
     #endif
 
     #undef DO_OVERRIDE

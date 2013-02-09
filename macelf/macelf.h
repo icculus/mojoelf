@@ -32,6 +32,7 @@ extern const MOJOELF_Callbacks mojoelf_callbacks;
 
 int build_trampolines(void);
 int insert_symbol(const char *fn, void *ptr);
+void *find_symbol(const char *sym);
 int remove_symbol(const char *fn);
 void missing_symbol_called(const char *missing_symbol);
 void warn_missing_native_symbol(const char *lib, const char *fn);
@@ -54,6 +55,14 @@ void unload_native_sdl12(void *handle);
 #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENGL
 void *load_native_opengl(void);
 void unload_native_opengl(void *handle);
+#endif
+
+#ifndef MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
+#define MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL 1
+#endif
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
+void *load_native_openal(void);
+void unload_native_openal(void *handle);
 #endif
 
 #endif
