@@ -11,6 +11,8 @@
 
 #include "mojoelf.h"
 
+// !!! FIXME: a formal logging API could be helpful.
+
 // just some things shared between source files...
 
 #if 0
