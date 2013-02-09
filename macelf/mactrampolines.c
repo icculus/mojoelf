@@ -2139,6 +2139,83 @@ static int mactrampoline_getsockopt(int fd, int level, int option, void *value, 
 } // mactrampoline_getsockopt
 
 
+typedef enum
+{
+    LINUX_MSG_OOB=0x01,
+    LINUX_MSG_PEEK=0x02,
+    LINUX_MSG_DONTROUTE=0x04,
+    LINUX_MSG_CTRUNC=0x08,
+    LINUX_MSG_TRUNC=0x20,
+    LINUX_MSG_DONTWAIT=0x40,
+    LINUX_MSG_EOR=0x80,
+    LINUX_MSG_WAITALL=0x100,
+} LinuxSendRecvFlags;
+
+static int linux_sendrecvflags_to_mac(int lnxflags)
+{
+    int macflags = 0;
+
+    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~fl; }
+    CVTFLAG(MSG_OOB);
+    CVTFLAG(MSG_PEEK);
+    CVTFLAG(MSG_DONTROUTE);
+    CVTFLAG(MSG_CTRUNC);
+    CVTFLAG(MSG_TRUNC);
+    CVTFLAG(MSG_DONTWAIT);
+    CVTFLAG(MSG_EOR);
+    CVTFLAG(MSG_WAITALL);
+    #undef CVTFLAG
+
+    if (lnxflags != 0)
+    {
+        STUBBED("unsupported flag");
+        errno = EINVAL;
+        return -1;
+    } // if
+
+    assert(macflags != -1);
+    return macflags;
+} // linux_sendrecvflags_to_mac
+
+static ssize_t mactrampoline_recv(int fd, void *buf, size_t buflen, int lnxflags)
+{
+    const int macflags = linux_sendrecvflags_to_mac(lnxflags);
+    return (macflags == -1) ? -1 : recv(fd, buf, buflen, macflags);
+} // mactrampoline_recv
+
+static ssize_t mactrampoline_recvfrom(int fd, void *buf, size_t buflen, int lnxflags, void/*struct sockaddr*/ *addr, socklen_t *addrlen)
+{
+    struct sockaddr_storage macaddr;
+    const int macflags = linux_sendrecvflags_to_mac(lnxflags);
+    if (macflags == -1)
+        return -1;
+    const int rc = recvfrom(fd, buf, buflen, macflags, (struct sockaddr *) &macaddr, addrlen);
+    if (rc != -1)
+    {
+        if (!mac_sockaddr_to_linux(addr, &macaddr))
+            return -1;
+    } // if
+    return rc;
+} // mactrampoline_recvfrom
+
+static ssize_t mactrampoline_send(int fd, const void *buf, size_t buflen, int lnxflags)
+{
+    const int macflags = linux_sendrecvflags_to_mac(lnxflags);
+    return (macflags == -1) ? -1 : send(fd, buf, buflen, macflags);
+} // mactrampoline_send
+
+static ssize_t mactrampoline_sendto(int fd, const void *buf, size_t buflen, int lnxflags, const void/*struct sockaddr*/ *addr, socklen_t addrlen)
+{
+    struct sockaddr_storage macaddr;
+    const int macflags = linux_sendrecvflags_to_mac(lnxflags);
+    if (macflags == -1)
+        return -1;
+    else if (!linux_sockaddr_to_mac(&macaddr, addr))
+        return -1;
+    return sendto(fd, buf, buflen, macflags, (struct sockaddr *) &macaddr, addrlen);
+} // mactrampoline_sendto
+
+
 // !!! FIXME: this should work like the native overrides, but honestly,
 // !!! FIXME:  who doesn't reference glibc?
 int build_trampolines(void)
