@@ -1788,6 +1788,7 @@ static int mactrampoline_pthread_once(void/*pthread_once_t*/ *_once, void (*init
 //  Most of the other ones don't match up, but they aren't things we care about.
 //  AF_UNIX and AF_INET use the same values as Mac OS X. AF_INET6 doesn't.
 #define LINUX_AF_INET6 10
+#define LINUX_PF_INET6 LINUX_AF_INET6
 
 static size_t get_sockaddr_len(const int family)
 {
@@ -1909,6 +1910,124 @@ static int mactrampoline_getsockname(int fd, void/*struct sockaddr*/ *addr, sock
     return 0;
 } // mactrampoline_getsockname
 
+static const char *mactrampoline_inet_ntop(int family, const void *src, char *dst, socklen_t len)
+{
+    if (family == LINUX_AF_INET6)
+        family = AF_INET6;
+    if (!supported_socket_family(family))
+    {
+        errno = EAFNOSUPPORT;
+        return NULL;
+    } // if
+    return inet_ntop(family, src, dst, len);
+} // mactrampoline_inet_ntop
+
+static int mactrampoline_inet_pton(int family, const char *src, void *dst)
+{
+    if (family == LINUX_AF_INET6)
+        family = AF_INET6;
+    if (!supported_socket_family(family))
+    {
+        errno = EAFNOSUPPORT;
+        return -1;
+    } // if
+    return inet_pton(family, src, dst);
+} // mactrampoline_inet_pton
+
+static void mactrampoline_freeaddrinfo(struct addrinfo *info)
+{
+    // Linux and Mac addrinfo mostly line up here; two fields are swapped, and PF_INET6 is a different value.
+    char *ai_canonname = (char *) info->ai_addr;
+    struct sockaddr *ai_addr = (struct sockaddr *) info->ai_canonname;
+    info->ai_canonname = ai_canonname;
+    info->ai_addr = ai_addr;
+    if (info->ai_family == LINUX_PF_INET6)
+        info->ai_family = PF_INET6;
+    freeaddrinfo(info);
+} // mactrampoline_freeaddrinfo
+
+typedef enum
+{
+    LINUX_EAI_BADFLAGS=-1,
+    LINUX_EAI_NONAME=-2,
+    LINUX_EAI_AGAIN=-3,
+    LINUX_EAI_FAIL=-4,
+    LINUX_EAI_FAMILY=-6,
+    LINUX_EAI_SOCKTYPE=-7,
+    LINUX_EAI_SERVICE=-8,
+    LINUX_EAI_MEMORY=-10,
+    LINUX_EAI_SYSTEM=-11,
+    LINUX_EAI_OVERFLOW=-12,
+} LinuxAddrInfoErrors;
+
+static const char *mactrampoline_gai_strerror(int err)
+{
+    switch ((LinuxAddrInfoErrors) err)
+    {
+        case LINUX_EAI_BADFLAGS: return "invalid value for ai_flags";
+        case LINUX_EAI_NONAME: return "hostname or servname not provided, or not known";
+        case LINUX_EAI_AGAIN: return "temporary failure in name resolution";
+        case LINUX_EAI_FAIL: return "non-recoverable failure in name resolution";
+        case LINUX_EAI_FAMILY: return "ai_family not supported";
+        case LINUX_EAI_SOCKTYPE: return "ai_socktype not supported";
+        case LINUX_EAI_SERVICE: return "servname not supported for ai_socktype";
+        case LINUX_EAI_MEMORY: return " memory allocation failure";
+        case LINUX_EAI_SYSTEM: return "system error returned in errno";
+        case LINUX_EAI_OVERFLOW: return "argument buffer overflow";
+    } // switch
+
+    return "unknown error";
+} // mactrampoline_gai_strerror
+
+static int mac_addrinfoerror_to_linux(const int err)
+{
+    switch (err)
+    {
+        case 0: return 0;
+        #define CVTERRCODE(e) case e: return LINUX_##e
+        CVTERRCODE(EAI_BADFLAGS);
+        CVTERRCODE(EAI_NONAME);
+        CVTERRCODE(EAI_AGAIN);
+        CVTERRCODE(EAI_FAIL);
+        CVTERRCODE(EAI_FAMILY);
+        CVTERRCODE(EAI_SOCKTYPE);
+        CVTERRCODE(EAI_SERVICE);
+        CVTERRCODE(EAI_MEMORY);
+        CVTERRCODE(EAI_SYSTEM);
+        CVTERRCODE(EAI_OVERFLOW);
+        #undef CVTERRCODE
+    } // switch
+    return LINUX_EAI_FAIL;  // oh well.
+} // mac_addrinfoerror_to_linux
+
+static int mactrampoline_getaddrinfo(const char *hostname, const char *servname, const struct addrinfo *hints, struct addrinfo **res)
+{
+    // getaddrinfo on Linux and Mac currently only accepts PF_INET, PF_INET6, and PF_UNSPEC.
+    // Linux and Mac addrinfo mostly line up here; two fields are swapped, and PF_INET6 is a different value.
+    struct addrinfo info;
+    memcpy(&info, hints, sizeof (info));
+    info.ai_canonname = (char *) hints->ai_addr;
+    info.ai_addr = (struct sockaddr *) hints->ai_canonname;
+    if (info.ai_family == LINUX_PF_INET6)
+        info.ai_family = PF_INET6;
+
+    const int rc = getaddrinfo(hostname, servname, &info, res);
+
+    // swap the result fields one more time...
+    if ((res != NULL) && (*res != NULL))
+    {
+        struct addrinfo *pinfo = *res;
+        char *ai_canonname = (char *) pinfo->ai_addr;
+        struct sockaddr *ai_addr = (struct sockaddr *) pinfo->ai_canonname;
+        pinfo->ai_canonname = ai_canonname;
+        pinfo->ai_addr = ai_addr;
+        if (pinfo->ai_family == PF_INET6)
+            pinfo->ai_family = LINUX_PF_INET6;
+    } // if
+
+    return mac_addrinfoerror_to_linux(rc);
+} // mactrampoline_getaddrinfo
+
 typedef enum
 {
     LINUX_NI_NUMERICHOST=1,
@@ -1933,6 +2052,7 @@ static int mactrampoline_getnameinfo(const void/*struct sockaddr*/ *addr, sockle
 
     if (lnxflags != 0)
     {
+        STUBBED("unsupported flag");
         errno = EINVAL;
         return -1;  // flag we don't handle.
     } // if
@@ -1940,32 +2060,9 @@ static int mactrampoline_getnameinfo(const void/*struct sockaddr*/ *addr, sockle
     if (!linux_sockaddr_to_mac(&macaddr, addr))
         return -1;
 
-    return getnameinfo((struct sockaddr *) &macaddr, addrlen, host, hostlen, service, servlen, macflags);
+    const int rc = getnameinfo((struct sockaddr *) &macaddr, addrlen, host, hostlen, service, servlen, macflags);
+    return mac_addrinfoerror_to_linux(rc);
 } // mactrampoline_getnameinfo
-
-static const char *mactrampoline_inet_ntop(int family, const void *src, char *dst, socklen_t len)
-{
-    if (family == LINUX_AF_INET6)
-        family = AF_INET6;
-    if (!supported_socket_family(family))
-    {
-        errno = EAFNOSUPPORT;
-        return NULL;
-    } // if
-    return inet_ntop(family, src, dst, len);
-} // mactrampoline_inet_ntop
-
-static int mactrampoline_inet_pton(int family, const char *src, void *dst)
-{
-    if (family == LINUX_AF_INET6)
-        family = AF_INET6;
-    if (!supported_socket_family(family))
-    {
-        errno = EAFNOSUPPORT;
-        return -1;
-    } // if
-    return inet_pton(family, src, dst);
-} // mactrampoline_inet_pton
 
 
 #define LINUX_SOL_SOCKET 1
