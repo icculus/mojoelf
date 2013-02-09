@@ -15,6 +15,7 @@ MACTRAMPOLINE_OVERRIDE(void,SDL_UnloadObject,(void *a))
 MACTRAMPOLINE_OVERRIDE(int,SDL_GL_LoadLibrary,(const char *a))
 MACTRAMPOLINE_OVERRIDE(void *,SDL_GL_GetProcAddress,(const char *a))
 MACTRAMPOLINE_OVERRIDE(void,SDL_SetError,(const char *fmt, ...))
+MACTRAMPOLINE_OVERRIDE(int,SDL_GetWMInfo,(void *a))
 
 MACTRAMPOLINE(int,SDL_InitSubSystem,(Uint32 a),(a),return)
 MACTRAMPOLINE(void,SDL_QuitSubSystem,(Uint32 a),(a),)
@@ -210,4 +211,3 @@ MACTRAMPOLINE(SDL_GrabMode,SDL_WM_GrabInput,(SDL_GrabMode a),(a),return)
 MACTRAMPOLINE(int,SDL_SoftStretch,(SDL_Surface *a, SDL_Rect *b, SDL_Surface *c, SDL_Rect *d),(a,b,c,d),return)
 
 // end of mactrampolines_sdl12.h ...
-

@@ -137,6 +137,14 @@ static void mactrampoline_sdl12_SDL_SetError(const char *fmt, ...)
     free(str);
 } // mactrampoline_sdl12_SDL_SetError
 
+static int mactrampoline_sdl12_SDL_GetWMInfo(void *unused)
+{
+    // This is only going to cause problems, so force it off.
+    //  Probably a lot of Unix apps that assume this has X11 info.
+    pnativefn_sdl12_SDL_SetError("%s", "SDL_GetWMInfo not supported");
+    return 0;
+} // mactrampoline_sdl12_SDL_GetWMInfo
+
 
 void *load_native_sdl12(void)
 {
