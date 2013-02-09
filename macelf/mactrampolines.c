@@ -974,20 +974,28 @@ static pthread_mutex_t loader_mutex;
 //  you talk to Mach-O binaries directly in any case, due to calling
 //  convention differences.
 // These aren't static, because other sources need to use them.
-void *mactrampoline_dlopen(const char *fname, int flags)
+void *mactrampoline_dlopen(const char *soname, int flags)
 {
-    STUBBED("trap a few libs like SDL, OpenGL, X11, OpenAL...");
+    STUBBED("trap a few more libs like OpenAL (etc)...");
     STUBBED("flags are ignored");
     pthread_mutex_lock(&loader_mutex);
-    void *retval = MOJOELF_dlopen_file(fname, &mojoelf_callbacks);
+    // !!! FIXME: we need the executable's rpath and runpath settings.
+    MOJOELF_dlerror();  // clear any existing errors.
+    // !!! FIXME: there are paths to failure that won't go
+    // !!! FIXME:  through MojoELF, and thus won't set the error.
+    void *retval = mojoelf_callbacks.loader(soname, NULL, NULL);
     pthread_mutex_unlock(&loader_mutex);
     return retval;
 } // mactrampoline_dlopen
 
 void *mactrampoline_dlsym(void *lib, const char *sym)
 {
+    // !!! FIXME: lib==NULL means something different.
     pthread_mutex_lock(&loader_mutex);
-    void *retval = MOJOELF_dlsym(lib, sym);
+    MOJOELF_dlerror();  // clear any existing errors.
+    // !!! FIXME: there are paths to failure that won't go
+    // !!! FIXME:  through MojoELF, and thus won't set the error.
+    void *retval = mojoelf_callbacks.resolver(lib, sym);
     pthread_mutex_unlock(&loader_mutex);
     return retval;
 } // mactrampoline_dlsym
@@ -995,7 +1003,8 @@ void *mactrampoline_dlsym(void *lib, const char *sym)
 int mactrampoline_dlclose(void *lib)
 {
     pthread_mutex_lock(&loader_mutex);
-    MOJOELF_dlclose(lib);
+    MOJOELF_dlerror();  // clear any existing errors.
+    mojoelf_callbacks.unloader(lib);
     pthread_mutex_unlock(&loader_mutex);
     return 0;
 } // mactrampoline_dlclose
