@@ -410,9 +410,32 @@ static int mactrampoline_truncate(const char* path, /*off_t*/uintptr_t offset)
     return truncate(path, (off_t) offset);
 } // mactrampoline_truncate
 
-static void *mactrampoline_mmap(void* addr, size_t len, int prot, int flags, int fd, /*off_t*/uintptr_t offset)
+typedef enum
 {
-    return mmap(addr, len, prot, flags, fd, (off_t) offset);
+    LINUX_MAP_SHARED=0x01,
+    LINUX_MAP_PRIVATE=0x02,
+    LINUX_MAP_FIXED=0x10,
+    LINUX_MAP_ANON=0x20,
+} LinuxMMapFlags;
+
+static void *mactrampoline_mmap(void* addr, size_t len, int prot, int lnxflags, int fd, /*off_t*/uintptr_t offset)
+{
+    int macflags = 0;
+
+    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~LINUX_##fl; }
+    CVTFLAG(MAP_SHARED);
+    CVTFLAG(MAP_PRIVATE);
+    CVTFLAG(MAP_FIXED);
+    CVTFLAG(MAP_ANON);
+    #undef CVTFLAG
+
+    if (lnxflags)
+    {
+        errno = ENOTSUP;
+        return (void *) MAP_FAILED;
+    } // if
+
+    return mmap(addr, len, prot, macflags, fd, (off_t) offset);
 } // mactrampoline_mmap
 
 static int mactrampoline_fseeko(FILE* io, /*off_t*/uintptr_t offset, int whence)
