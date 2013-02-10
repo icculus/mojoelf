@@ -855,7 +855,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 
     symstr = ctx->strtab + symbol->st_name;
 
-    if ((sym == 0) || (*symstr == '\0'))
+    if (*symstr == '\0')
         addr = ((uint8 *) ctx->retval->mmapaddr) + symbol->st_value;
     else
     {
@@ -885,7 +885,7 @@ static int resolve_symbol(ElfContext *ctx, const uint32 sym, uintptr *_addr)
 
     *_addr = (uintptr) addr;
     return 1;
-} // resolve_sym
+} // resolve_symbol
 
 
 static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
@@ -897,7 +897,7 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
 
     if (r_sym >= ctx->symtabcount)
         DLOPEN_FAIL("Bogus symbol index");
-    else if (!resolve_symbol(ctx, r_sym, &addr))
+    else if ((r_sym) && (!resolve_symbol(ctx, r_sym, &addr)))
         return 0;
 
     switch (r_type)
@@ -910,8 +910,8 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
         case R_COPY:
             *fixup = addr;
             break;
-        case R_RELATIVE:  // !!! FIXME: shouldn't (addr) be (mmapaddr)?
-            *fixup = (uintptr) (addr + r_addend);
+        case R_RELATIVE:
+            *fixup += (uintptr) (mmapaddr + r_addend);
             break;
         case R_32:  // !!! FIXME: presumable should be (uint32), not (uintptr).
             *fixup = (uintptr) (addr + r_addend);
