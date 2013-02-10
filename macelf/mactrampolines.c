@@ -2123,7 +2123,7 @@ static int mactrampoline_getnameinfo(const void/*struct sockaddr*/ *addr, sockle
     struct sockaddr_storage macaddr;
     int macflags = 0;
 
-    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~fl; }
+    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~LINUX_##fl; }
     CVTFLAG(NI_NUMERICHOST);
     CVTFLAG(NI_NUMERICSERV);
     CVTFLAG(NI_NOFQDN);
@@ -2236,7 +2236,7 @@ static int linux_sendrecvflags_to_mac(int lnxflags)
 {
     int macflags = 0;
 
-    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~fl; }
+    #define CVTFLAG(fl) if (lnxflags & LINUX_##fl) { macflags |= fl; lnxflags &= ~LINUX_##fl; }
     CVTFLAG(MSG_OOB);
     CVTFLAG(MSG_PEEK);
     CVTFLAG(MSG_DONTROUTE);
