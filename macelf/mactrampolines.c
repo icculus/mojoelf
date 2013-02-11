@@ -511,11 +511,14 @@ static int32_t **mactrampoline___ctype_toupper_loc(void)
     return &ptoupper_array;
 } // mactrampoline__ctype_toupper_loc
 
-static const unsigned short **mactrampoline___ctype_b_loc(void)
+static const uint16_t **mactrampoline___ctype_b_loc(void)
 {
     STUBBED("write me");
     STUBBED("this should be thread-local, too");
-    return NULL;
+//    return NULL;
+    static const uint16_t barray[384];
+    static const uint16_t *pbarray = barray + 128;
+    return &pbarray;
 } // mactrampoline___ctype_b_loc
 
 // mbstate_t is totally different on Mac and Linux.
