@@ -2564,3 +2564,6 @@ MACTRAMPOLINE(void,glSyncTextureINTEL,(GLuint a),(a),)
 MACTRAMPOLINE(void,glUnmapTexture2DINTEL,(GLuint a,GLint b),(a,b),)
 MACTRAMPOLINE(GLvoid*,glMapTexture2DINTEL,(GLuint a,GLint b,GLbitfield c,const GLint *d,const GLenum *e),(a,b,c,d,e),return)
 MACTRAMPOLINE(void,glDrawTextureNV,(GLuint a,GLuint b,GLfloat c,GLfloat d,GLfloat e,GLfloat f,GLfloat g,GLfloat h,GLfloat i,GLfloat j,GLfloat k),(a,b,c,d,e,f,g,h,i,j,k),)
+
+// end of mactrampolines_openg.h ...
+

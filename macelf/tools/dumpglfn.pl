@@ -131,5 +131,7 @@ while (<SPEC>) {
 
 close(SPEC);
 
+print("\n// end of mactrampolines_openg.h ...\n\n");
+
 # end of parseglspec.pl ...
 
