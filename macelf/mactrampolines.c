@@ -293,6 +293,13 @@ static long mactrampoline___strtol_internal(const char *nptr, char **endptr, int
     return strtol(nptr, endptr, radix);
 } // mactrampoline___strtol_internal
 
+static unsigned long mactrampoline___strtoul_internal(const char *nptr, char **endptr, int radix, int group)
+{
+    if (group != 0)
+        STUBBED("LSB expects group to be unconditionally zero");
+    return strtoul(nptr, endptr, radix);
+} // mactrampoline___strtoul_internal
+
 static char *mactrampoline___xpg_basename(const char *path)
 {
     STUBBED("need to decide if this every overwrites (path), and if that's okay");
