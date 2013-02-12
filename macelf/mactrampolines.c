@@ -11,6 +11,7 @@
 //  it, it aligns the stack to 16 bytes thanks to -mstackrealign, and then
 //  calls the actual function in the system library.
 
+#define _DARWIN_FEATURE_64_BIT_INODE 1
 #define _DARWIN_USE_64_BIT_INODE 1
 
 #include <stdio.h>
@@ -55,6 +56,10 @@
 #include <net/if.h>
 #include <ifaddrs.h>
 #include <libgen.h>
+#include <syslog.h>
+#include <sys/param.h>
+#include <sys/ucred.h>
+#include <sys/mount.h>
 
 #include "macelf.h"
 
@@ -299,6 +304,16 @@ static unsigned long mactrampoline___strtoul_internal(const char *nptr, char **e
         STUBBED("LSB expects group to be unconditionally zero");
     return strtoul(nptr, endptr, radix);
 } // mactrampoline___strtoul_internal
+
+static void mactrampoline___bcopy(const void *src, void *dst, size_t len)
+{
+    bcopy(src, dst, len);
+} // mactrampoline___bcopy
+
+static void mactrampoline___bzero(void *dst, size_t len)
+{
+    bzero(dst, len);
+} // mactrampoline___bzero
 
 static char *mactrampoline___xpg_basename(const char *path)
 {
@@ -1394,6 +1409,168 @@ static void mactrampoline___assert_fail(const char *assertion, const char *fname
     abort();
 } // mactrampoline___assert_fail
 
+static void mactrampoline_syslog(int priority, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vsyslog(priority, fmt, ap);
+    va_end(ap);
+} // mactrampoline_syslog
+
+static int mactrampoline_mkstemp64(char *templt)
+{
+    return mkstemp(templt);  // we're already 64-bit, just pass it through.
+} // mactrampoline_mkstemp64
+
+typedef struct
+{
+    char *ptr;
+    int len;
+    int pos;
+} MtabIo;
+
+static int mtab_read(void *opaque, char *buf, int len)
+{
+    MtabIo *iodata = (MtabIo *) opaque;
+    const int avail = iodata->len - iodata->pos;
+    if (len > avail)
+        len = avail;
+    if (len > 0)
+    {
+        memcpy(buf, iodata->ptr + iodata->pos, len);
+        iodata->pos += len;
+    } // if
+    return len;
+} // mtab_read
+
+static int mtab_close(void *opaque)
+{
+    MtabIo *iodata = (MtabIo *) opaque;
+    free(iodata->ptr);
+    free(iodata);
+    return 0;
+} // mtab_close
+
+
+static FILE *mactrampoline_setmntent(const char *fname, const char *mode)
+{
+    if (strcmp(fname, "/etc/mtab") != 0)
+        return fopen(fname, mode);
+
+    char *mtab = NULL;
+    int mtablen = 0;
+    int i = 0;
+    struct statfs *mntbufp = NULL;
+    const int mounts = getmntinfo(&mntbufp, MNT_WAIT);
+    for (i = 0; i < mounts; i++)
+    {
+        char opts[256];
+        char buf[1024];
+
+        strcpy(opts, (mntbufp->f_flags & MNT_RDONLY) ? "ro" : "rw");
+        #define CVTFLAG(fl,str) { \
+            if (mntbufp->f_flags & fl) { \
+                strcat(opts, "," str); \
+            } \
+        }
+        CVTFLAG(MNT_SYNCHRONOUS, "sync");
+        CVTFLAG(MNT_ASYNC, "async");
+        CVTFLAG(MNT_NOEXEC, "noexec");
+        CVTFLAG(MNT_NOSUID, "nosuid");
+        CVTFLAG(MNT_NODEV, "nodev");
+        #undef CVTFLAG
+
+        snprintf(buf, sizeof (buf), "%s %s %s %s 0 0\n",
+                 mntbufp->f_mntfromname, mntbufp->f_mntonname,
+                 mntbufp->f_fstypename, opts);
+        const size_t len = strlen(buf);
+        void *ptr = realloc(mtab, mtablen + len + 1);
+        if (ptr == NULL)
+        {
+            free(mtab);
+            errno = ENOMEM;
+            return NULL;
+        } // if
+        mtab = (char *) ptr;
+        strcpy(mtab + mtablen, buf);
+        mtablen += len;
+        mntbufp++;
+    } // for
+
+    MtabIo *iodata = (MtabIo *) malloc(sizeof (MtabIo));
+    if (iodata == NULL)
+    {
+        free(mtab);
+        return NULL;
+    } // if
+
+    iodata->ptr = mtab;
+    iodata->len = mtablen;
+    iodata->pos = 0;
+
+    // !!! FIXME: writing
+    FILE *retval = funopen(iodata, mtab_read, NULL, NULL, mtab_close);
+    if (retval == NULL)
+    {
+        free(mtab);
+        free(iodata);
+    } // if
+    return retval;
+} // mactrampoline_setmntent
+
+typedef struct
+{
+    char *mnt_fsname;
+    char *mnt_dir;
+    char *mnt_type;
+    char *mnt_opts;
+    int   mnt_freq;
+    int   mnt_passno;
+} LinuxMntEnt;
+
+static LinuxMntEnt *mactrampoline_getmntent(FILE *io)
+{
+    static LinuxMntEnt retval;
+    static char buf[512];
+    if (!fgets(buf, sizeof (buf), io))
+        return NULL;
+
+    char *tok = strtok(buf, " ");
+    if (!tok) return NULL;
+    retval.mnt_fsname = tok;
+
+    tok = strtok(NULL, " ");
+    if (!tok) return NULL;
+    retval.mnt_dir = tok;
+
+    tok = strtok(NULL, " ");
+    if (!tok) return NULL;
+    retval.mnt_type = tok;
+
+    tok = strtok(NULL, " ");
+    if (!tok) return NULL;
+    retval.mnt_opts = tok;
+
+    tok = strtok(NULL, " ");
+    if (!tok) return NULL;
+    retval.mnt_freq = atoi(tok);   // !!! FIXME: don't use atoi.
+
+    tok = strtok(NULL, " ");
+    if (!tok) return NULL;
+    retval.mnt_passno = atoi(tok);   // !!! FIXME: don't use atoi.
+
+    return &retval;
+} // mactrampoline_getmntent
+
+//static int mactrampoline_addmntent(FILE *io, const struct LinuxMntEnt *b)
+
+static int mactrampoline_endmntent(FILE *io)
+{
+    return (io == NULL) ? 0 : fclose(io);
+} // mactrampoline_endmntent
+
+//static char* mactrampoline_hasmntopt(const struct mntent *a, const char *b)
+
 
 static int mactrampoline_getrlimit(int resource, struct rlimit *limit)
 {
@@ -1620,27 +1797,31 @@ static int mactrampoline_pthread_mutex_destroy(void/*pthread_mutex_t*/ *lnxmutex
 static int mactrampoline_pthread_mutex_lock(void/*pthread_mutex_t*/ *lnxmutex)
 {
     STUBBED("need to convert errors to Linux values");
-    return pthread_mutex_lock(*(pthread_mutex_t **) lnxmutex);
+    pthread_mutex_t *macmutex = *(pthread_mutex_t **) lnxmutex;
+    return macmutex ? pthread_mutex_lock(macmutex) : -EINVAL;
 } // mactrampoline_pthread_mutex_lock
 
 #if 0 // Whoops, not in Mac OS X yet.
 static int mactrampoline_pthread_mutex_timedlock(void/*pthread_mutex_t*/ *lnxmutex, const struct timespec *tspec)
 {
     STUBBED("need to convert errors to Linux values");
-    return pthread_mutex_timedlock(*(pthread_mutex_t **) lnxmutex, tspec);
+    pthread_mutex_t *macmutex = *(pthread_mutex_t **) lnxmutex;
+    return macmutex ? pthread_mutex_timedlock(macmutex, tspec) : -EINVAL;
 } // mactrampoline_pthread_mutex_timedlock
 #endif
 
 static int mactrampoline_pthread_mutex_trylock(void/*pthread_mutex_t*/ *lnxmutex)
 {
     STUBBED("need to convert errors to Linux values");
-    return pthread_mutex_trylock(*(pthread_mutex_t **) lnxmutex);
+    pthread_mutex_t *macmutex = *(pthread_mutex_t **) lnxmutex;
+    return macmutex ? pthread_mutex_trylock(macmutex) : -EINVAL;
 } // mactrampoline_pthread_mutex_trylock
 
 static int mactrampoline_pthread_mutex_unlock(void/*pthread_mutex_t*/ *lnxmutex)
 {
     STUBBED("need to convert errors to Linux values");
-    return pthread_mutex_unlock(*(pthread_mutex_t **) lnxmutex);
+    pthread_mutex_t *macmutex = *(pthread_mutex_t **) lnxmutex;
+    return macmutex ? pthread_mutex_unlock(macmutex) : -EINVAL;
 } // mactrampoline_pthread_mutex_unlock
 
 static int mactrampoline_pthread_mutexattr_init(void/*pthread_mutexattr_t*/ *lnxattr)
@@ -1689,6 +1870,11 @@ static int mactrampoline_pthread_mutexattr_settype(void/*pthread_mutexattr_t*/ *
 {
     STUBBED("need to convert errors to Linux values");
     return pthread_mutexattr_settype(*(pthread_mutexattr_t **) lnxattr, typ);
+} // mactrampoline_pthread_mutexattr_settype
+
+static int mactrampoline_pthread_mutexattr_setkind_np(void/*pthread_mutexattr_t*/ *lnxattr, int typ)
+{
+    return mactrampoline_pthread_mutexattr_settype(lnxattr, typ);
 } // mactrampoline_pthread_mutexattr_settype
 
 static int mactrampoline_pthread_rwlock_init(void/*pthread_rwlock_t*/ *lnxrwlock, const void/*pthread_rwlockattr_t*/ *lnxattr)
