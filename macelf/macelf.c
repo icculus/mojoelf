@@ -21,6 +21,7 @@
 
 static int run_with_missing_symbols = 0;
 static int report_missing_symbols = 0;
+static int run_with_missing_symbols_at_start = 0;
 static int symbols_missing = 0;
 static int dependencies_missing = 0;
 
@@ -531,6 +532,13 @@ int main(int argc, char **argv, char **envp)
             continue;
         } // else if
 
+        else if (strcmp(arg, "--run-with-missing-symbols-at-start") == 0)
+        {
+            run_with_missing_symbols = 1;
+            run_with_missing_symbols_at_start = 1;
+            continue;
+        } // else if
+
         else if (strcmp(arg, "--native-overrides") == 0)
         {
             const char *list = argv[++i];
@@ -565,6 +573,7 @@ int main(int argc, char **argv, char **envp)
         fprintf(stderr, "       --help\n");
         fprintf(stderr, "       --report-missing-symbols\n");
         fprintf(stderr, "       --run-with-missing-symbols\n");
+        fprintf(stderr, "       --run-with-missing-symbols-at-start\n");
         fprintf(stderr, "       --native-overrides <options>\n");
         fprintf(stderr, "       --ld-library-path <path>\n");
         fprintf(stderr, "\n");
@@ -602,6 +611,12 @@ int main(int argc, char **argv, char **envp)
 
         fprintf(stderr, "\n\nWARNING: You are missing symbols but running anyhow!\n");
         fprintf(stderr, "WARNING: This might lead to crashes!\n\n");
+    } // if
+
+    if (run_with_missing_symbols_at_start)
+    {
+        report_missing_symbols = 0;  // future dlopen()s can now fail.
+        run_with_missing_symbols = 0;  // future dlopen()s can now fail.
     } // if
 
     EntryFn entry = (EntryFn) MOJOELF_getentry(lib);
