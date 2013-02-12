@@ -3,6 +3,7 @@ test/hello.so
 test/test
 test/mojoelf
 test/testsdl
-macelf/sdltest
-macelf/linuxbin
 macelf/bin
+macelf/tests
+macelf/macelf
+
