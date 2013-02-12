@@ -60,6 +60,7 @@
 #include <sys/param.h>
 #include <sys/ucred.h>
 #include <sys/mount.h>
+#include <sys/utsname.h>
 
 #include "macelf.h"
 
@@ -1574,6 +1575,50 @@ static int mactrampoline_endmntent(FILE *io)
 
 //static char* mactrampoline_hasmntopt(const struct mntent *a, const char *b)
 
+#define LINUX_UTSNAME_STRING_LENGTH 65
+typedef struct
+{
+    char sysname[LINUX_UTSNAME_STRING_LENGTH];
+    char nodename[LINUX_UTSNAME_STRING_LENGTH];
+    char release[LINUX_UTSNAME_STRING_LENGTH];
+    char version[LINUX_UTSNAME_STRING_LENGTH];
+    char machine[LINUX_UTSNAME_STRING_LENGTH];
+    char domainname[LINUX_UTSNAME_STRING_LENGTH];
+} LinuxUtsName;
+
+static int mactrampoline_uname(LinuxUtsName *lnxname)
+{
+    struct utsname macname;
+    if (uname(&macname) == -1)
+        return -1;
+    else if (gethostname(lnxname->domainname, sizeof (lnxname->domainname)) == -1)
+        return -1;
+
+    #define CPYUTSSTR(x) snprintf(lnxname->x, sizeof (lnxname->x), "%s", macname.x)
+    CPYUTSSTR(sysname);
+    CPYUTSSTR(nodename);
+    CPYUTSSTR(release);
+    CPYUTSSTR(version);
+    CPYUTSSTR(machine);
+    #undef CPYUTSSTR
+
+    return 0;
+} // mactrampoline_uname
+
+static int mactrampoline_sigaction(int sig, const void/*struct sigaction*/ *lnxact, void/*struct sigaction*/ *lnxoact)
+{
+    STUBBED("write me");
+    errno = ENOTSUP;
+    return -1;
+} // mactrampoline_sigaction
+
+static int mactrampoline_fcvt_r(double number, int ndigits, int *decpt, int *sign, char *buf, size_t len)
+{
+    STUBBED("this is wrong: not reentrant, wrong retval");
+    char *str = fcvt(number, ndigits, decpt, sign);
+    snprintf(buf, len, "%s", str);
+    return 0;
+} // mactrampoline_fcvt_r
 
 static int mactrampoline_getrlimit(int resource, struct rlimit *limit)
 {
@@ -1627,6 +1672,11 @@ static void mactrampoline_longjmp(jmp_buf env, int val)
 {
     longjmp(env, val);
 } // mactrampoline_longjmp
+
+static void mactrampoline__longjmp(jmp_buf env, int val)
+{
+    longjmp(env, val);
+} // mactrampoline__longjmp
 
 
 // pthread_t matches up closely enough, but much of the rest of the pthread
