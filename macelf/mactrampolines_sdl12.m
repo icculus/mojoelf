@@ -109,7 +109,10 @@ static int mactrampoline_sdl12_SDL_GL_LoadLibrary(const char *soname)
     // we ignore (soname); you always get Apple's OpenGL (but we need to
     //  trampoline everything, of course).
     if (gllib == NULL)
+    {
+        GWantGLX = 0;
         gllib = mactrampoline_sdl12_SDL_LoadObject("libGL.so.1");  // will trigger our native override.
+    } // if
     return gllib ? 0 : -1;
 } // mactrampoline_sdl12_SDL_GL_LoadLibrary
 

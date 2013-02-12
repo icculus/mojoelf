@@ -29,6 +29,7 @@
 
 extern char *program_invocation_name;
 extern const MOJOELF_Callbacks mojoelf_callbacks;
+extern int GWantGLX;
 
 int build_trampolines(void);
 int insert_symbol(const char *fn, void *ptr);
@@ -63,6 +64,16 @@ void unload_native_opengl(void *handle);
 #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
 void *load_native_openal(void);
 void unload_native_openal(void *handle);
+#endif
+
+#ifndef MACELF_SUPPORT_NATIVE_OVERRIDE_X11
+#define MACELF_SUPPORT_NATIVE_OVERRIDE_X11 1
+#endif
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_X11
+void *load_native_x11(void);
+void unload_native_x11(void *handle);
+void *load_native_xext(void);
+void unload_native_xext(void *handle);
 #endif
 
 #endif

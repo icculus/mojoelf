@@ -31,13 +31,18 @@ perl -w ./dumpglfn.pl >../mactrampolines_opengl.h
 cd ..
 clang -o bin/mactrampolines_opengl.o \
     -arch i386 -c -mstackrealign \
-    -I.. -I. -O0 -g -Wall -pipe \
+    -I.. -I. -I/usr/X11/include -O0 -g -Wall -pipe \
     ./mactrampolines_opengl.c
 
 clang -o bin/mactrampolines_openal.o \
     -arch i386 -c -mstackrealign \
     -I.. -I. -O0 -g -Wall -pipe \
     ./mactrampolines_openal.c
+
+clang -o bin/mactrampolines_x11.o \
+    -arch i386 -c -mstackrealign \
+    -I.. -I. -I/usr/X11/include -O0 -g -Wall -pipe \
+    ./mactrampolines_x11.c
 
 clang -o bin/macelf.o \
     -arch i386 -c \

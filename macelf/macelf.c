@@ -36,6 +36,11 @@ static int native_override_opengl = 1;
 static int native_override_openal = 1;
 #endif
 
+#if MACELF_SUPPORT_NATIVE_OVERRIDE_X11
+static int native_override_x11 = 1;
+static int native_override_xext = 1;
+#endif
+
 char *program_invocation_name = NULL;
 const char *ld_library_path = NULL;
 
@@ -214,6 +219,11 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     if ((native_override_openal) && (strcmp(soname, "libopenal.so.1") == 0))
         soname = "libopenal.so.0";   // !!! FIXME: I'm not sure why the version changed...?
     DO_OVERRIDE(openal, "libopenal.so.0");
+    #endif
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_X11
+    DO_OVERRIDE(x11, "libX11.so.6");
+    DO_OVERRIDE(xext, "libXext.so.6");
     #endif
 
     #undef DO_OVERRIDE
@@ -455,6 +465,11 @@ static void setup_native_override(const char *item)
 
     #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
     DO_OVERRIDE(openal)
+    #endif
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_X11
+    DO_OVERRIDE(x11)
+    DO_OVERRIDE(xext)
     #endif
 
     #undef DO_OVERRIDE

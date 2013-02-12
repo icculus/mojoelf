@@ -23,6 +23,10 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
 
+#include <X11/Xlib.h>
+#include <X11/Xlibint.h>
+#include <GL/glx.h>
+
 // Deal with stuff that might not be in the Mac headers (yet).
 #ifndef GL_NV_half_float
 typedef unsigned short GLhalfNV;
@@ -57,15 +61,23 @@ typedef GLintptr GLvdpauSurfaceNV;
         ret pnativefn_opengl_##fn args; \
     }
 #include "mactrampolines_opengl.h"
+#include "mactrampolines_glx.h"
 #undef MACTRAMPOLINE_OVERRIDE
 #undef MACTRAMPOLINE
 
 void *load_native_opengl(void)
 {
-    const char *libname = "/System/Library/Frameworks/OpenGL.framework/Libraries/libGL.dylib";
+    const int wantglx = GWantGLX;
+    const char *nativelib = "/System/Library/Frameworks/OpenGL.framework/Libraries/libGL.dylib";
+    const char *glxlib = "/usr/X11/lib/libGL.1.dylib";
+    const char *libname = wantglx ? glxlib : nativelib;
     void *handle = dlopen(libname, RTLD_NOW);
     if (handle == NULL)
-        fprintf(stderr, "WARNING: tried to load native libGL and failed: %s\n", dlerror());
+    {
+        fprintf(stderr, "WARNING: tried to load native %s and failed: %s\n", wantglx ? "glX" : "OpenGL", dlerror());
+        if (wantglx)
+            fprintf(stderr, "WARNING:  You might need to install Xquartz from http://xquartz.macosforge.org/\n");
+    } // if
     else
     {
         // if a symbol is missing, we don't care. We cast a wide net, and many are expected to not exist on Mac OS X.
@@ -77,6 +89,9 @@ void *load_native_opengl(void)
         }
         #define MACTRAMPOLINE_OVERRIDE(typ,fn,params) MACTRAMPOLINE(typ,fn,params,XXX,XXX);
         #include "mactrampolines_opengl.h"
+        if (wantglx) {
+            #include "mactrampolines_glx.h"
+        }
         #undef MACTRAMPOLINE
         #undef MACTRAMPOLINE_OVERRIDE
     } // else
@@ -94,6 +109,7 @@ void unload_native_opengl(void *handle)
         }
         #define MACTRAMPOLINE_OVERRIDE(typ,fn,params) MACTRAMPOLINE(typ,fn,params,XXX,XXX);
         #include "mactrampolines_opengl.h"
+        #include "mactrampolines_glx.h"
         #undef MACTRAMPOLINE
         #undef MACTRAMPOLINE_OVERRIDE
 

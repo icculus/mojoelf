@@ -93,6 +93,9 @@ extern char **environ;  // !!! FIXME: really? This isn't in a header?
 // NOTE: pid_t is 32-bit on 32/64 bit Linux and Mac OS X.
 
 
+// by default, assume we want glX. SDL native override might want something else.
+int GWantGLX = 1;
+
 
 // Wrap Linux's errno (Which is actually __errno_location()).
 static int *mactrampoline___errno_location(void)
