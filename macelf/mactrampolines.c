@@ -48,6 +48,7 @@
 #include <uuid/uuid.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
+#include <semaphore.h>
 #include <dlfcn.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -61,6 +62,7 @@
 #include <sys/ucred.h>
 #include <sys/mount.h>
 #include <sys/utsname.h>
+#include <glob.h>
 
 #include "macelf.h"
 
@@ -96,7 +98,6 @@ extern char **environ;  // !!! FIXME: really? This isn't in a header?
 
 // by default, assume we want glX. SDL native override might want something else.
 int GWantGLX = 1;
-
 
 // Wrap Linux's errno (Which is actually __errno_location()).
 static int *mactrampoline___errno_location(void)
@@ -325,6 +326,8 @@ static char *mactrampoline___xpg_basename(const char *path)
     return basename((char *) path);
 } // mactrampoline___xpg_basename
 
+static int mactrampoline__IO_putc(int ch, FILE *io) { return putc(ch, io); }
+static int mactrampoline__IO_getc(FILE *io) { return getc(io); }
 
 // Just use the "locked" versions for now, since the unlocked don't exist.
 static int mactrampoline_fputs_unlocked(const char *str, FILE *io)
@@ -1605,6 +1608,166 @@ static int mactrampoline_uname(LinuxUtsName *lnxname)
     return 0;
 } // mactrampoline_uname
 
+typedef enum
+{
+    LINUX_GLOB_ERR         =(1 << 0),
+    LINUX_GLOB_MARK        =(1 << 1),
+    LINUX_GLOB_NOSORT      =(1 << 2),
+    LINUX_GLOB_DOOFFS      =(1 << 3),
+    LINUX_GLOB_NOCHECK     =(1 << 4),
+    LINUX_GLOB_APPEND      =(1 << 5),
+    LINUX_GLOB_NOESCAPE    =(1 << 6),
+    LINUX_GLOB_PERIOD      =(1 << 7),
+    LINUX_GLOB_MAGCHAR     =(1 << 8),
+    LINUX_GLOB_ALTDIRFUNC  =(1 << 9),
+    LINUX_GLOB_BRACE       =(1 << 10),
+    LINUX_GLOB_NOMAGIC     =(1 << 11),
+    LINUX_GLOB_TILDE       =(1 << 12),
+    LINUX_GLOB_ONLYDIR     =(1 << 13),
+    LINUX_GLOB_TILDE_CHECK =(1 << 14),
+} LinuxGlobFlags;
+
+typedef enum
+{
+    LINUX_GLOB_NOSPACE=1,
+    LINUX_GLOB_ABORTED=2,
+    LINUX_GLOB_NOMATCH=3,
+    LINUX_GLOB_NOSYS=4,
+} LinuxGlobErrors;
+
+// This matches the size of Mac's glob_t (once you drop two Mac-specific fields),
+//  it just needs to be reorganized a little, and flags need to be remapped.
+//  Note that the 64-bit version of this matches, too, but some of these
+//  void pointers point to 64-bit structures. The Mac side is always 64-bit.
+typedef struct
+{
+    size_t gl_pathc;
+    char **gl_pathv;
+    size_t gl_offs;
+    int gl_flags;
+	void (*gl_closedir)(void *);
+	void *(*gl_readdir)(void *);
+	void *(*gl_opendir)(const char *);
+	int (*gl_lstat)(const char *, void *);
+	int (*gl_stat)(const char *, void *);
+} LinuxGlobT;
+
+static int linux_glob_t_to_mac(glob_t *macglob, const LinuxGlobT *lnxglob)
+{
+    int macflags = 0;
+    int lnxflags = lnxglob->gl_flags;
+
+    if (lnxflags & LINUX_GLOB_ALTDIRFUNC)
+        STUBBED("we have to bridge the GLOB_ALTDIRFUNC callbacks");
+
+    // Linux flags aren't the same values, so map them.
+    #define MAPFLAG(fl) if (lnxflags & LINUX_##fl) { lnxflags &= ~LINUX_##fl; macflags |= fl; }
+    MAPFLAG(GLOB_ERR);
+    MAPFLAG(GLOB_MARK);
+    MAPFLAG(GLOB_NOSORT);
+    MAPFLAG(GLOB_DOOFFS);
+    MAPFLAG(GLOB_NOCHECK);
+    MAPFLAG(GLOB_APPEND);
+    MAPFLAG(GLOB_NOESCAPE);
+    //MAPFLAG(GLOB_PERIOD);
+    MAPFLAG(GLOB_MAGCHAR);
+    //MAPFLAG(GLOB_ALTDIRFUNC);
+    MAPFLAG(GLOB_BRACE);
+    MAPFLAG(GLOB_NOMAGIC);
+    MAPFLAG(GLOB_TILDE);
+    //MAPFLAG(GLOB_ONLYDIR);
+    //MAPFLAG(GLOB_TILDE_CHECK);
+    #undef MAPFLAG
+
+    if (lnxflags)
+        return 0;
+
+    macglob->gl_pathc = lnxglob->gl_pathc;
+    macglob->gl_matchc = 0;
+    macglob->gl_offs = lnxglob->gl_offs;
+    macglob->gl_errfunc = NULL;
+	macglob->gl_flags = macflags;
+	macglob->gl_pathv = lnxglob->gl_pathv;
+	macglob->gl_closedir = lnxglob->gl_closedir;
+	macglob->gl_readdir = (struct dirent *(*)(void*)) lnxglob->gl_readdir;
+	macglob->gl_opendir = lnxglob->gl_opendir;
+	macglob->gl_lstat = (int (*)(const char *, struct stat *)) lnxglob->gl_lstat;
+	macglob->gl_stat = (int (*)(const char *, struct stat *)) lnxglob->gl_stat;
+
+    return 1;
+} // linux_glob_t_to_mac
+
+static int mac_glob_t_to_linux(LinuxGlobT *lnxglob, const glob_t *macglob)
+{
+    int lnxflags = 0;
+    int macflags = macglob->gl_flags;
+
+    // Linux flags aren't the same values, so map them.
+    #define MAPFLAG(fl) if (macflags & fl) { macflags &= ~fl; lnxflags |= LINUX_##fl; }
+    MAPFLAG(GLOB_ERR);
+    MAPFLAG(GLOB_MARK);
+    MAPFLAG(GLOB_NOSORT);
+    MAPFLAG(GLOB_DOOFFS);
+    MAPFLAG(GLOB_NOCHECK);
+    MAPFLAG(GLOB_APPEND);
+    MAPFLAG(GLOB_NOESCAPE);
+    MAPFLAG(GLOB_MAGCHAR);
+    MAPFLAG(GLOB_ALTDIRFUNC);
+    MAPFLAG(GLOB_BRACE);
+    MAPFLAG(GLOB_NOMAGIC);
+    MAPFLAG(GLOB_TILDE);
+    #undef MAPFLAG
+
+    if (macflags)
+        return 0;
+
+    lnxglob->gl_pathc = macglob->gl_pathc;
+    lnxglob->gl_offs = macglob->gl_offs;
+	lnxglob->gl_flags = macglob->gl_flags;
+	lnxglob->gl_pathv = macglob->gl_pathv;
+	lnxglob->gl_closedir = macglob->gl_closedir;
+	lnxglob->gl_readdir = (void *(*)(void*)) macglob->gl_readdir;
+	lnxglob->gl_opendir = macglob->gl_opendir;
+	lnxglob->gl_lstat = (int (*)(const char *, void *)) macglob->gl_lstat;
+	lnxglob->gl_stat = (int (*)(const char *, void *)) macglob->gl_stat;
+
+    return 1;
+} // mac_glob_t_to_linux
+
+static int mactrampoline_glob(const char *pattern, int lnxflags, int (*errfn)(const char *, int), LinuxGlobT *lnxglob)
+{
+    glob_t macglob;
+
+    lnxglob->gl_flags = lnxflags;
+    if (!linux_glob_t_to_mac(&macglob, lnxglob))
+        return LINUX_GLOB_NOSYS;   // uhoh, something we didn't handle!
+
+    STUBBED("errfn needs to have errno values bridged");
+    const int rc = glob(pattern, macglob.gl_flags, errfn, &macglob);
+    mac_glob_t_to_linux(lnxglob, &macglob);
+
+    if (rc)
+    {
+        switch (rc)
+        {
+            #define MAPERR(x) case LINUX_##x: return x
+            MAPERR(GLOB_NOSPACE);
+            MAPERR(GLOB_ABORTED);
+            MAPERR(GLOB_NOMATCH);
+            #undef MAPERR
+        } // switch
+    } // if
+
+    return 0;  // success!
+} // mactrampoline_glob
+
+static void mactrampoline_globfree(LinuxGlobT *lnxglob)
+{
+    glob_t macglob;
+    linux_glob_t_to_mac(&macglob, lnxglob);
+    globfree(&macglob);
+} // mactrampoline_globfree
+
 static int mactrampoline_sigaction(int sig, const void/*struct sigaction*/ *lnxact, void/*struct sigaction*/ *lnxoact)
 {
     STUBBED("write me");
@@ -1678,6 +1841,40 @@ static void mactrampoline__longjmp(jmp_buf env, int val)
     longjmp(env, val);
 } // mactrampoline__longjmp
 
+#define LINUX_SEM_FAILED ((sem_t *)0)
+
+static sem_t *mactrampoline_sem_open(const char *name, int lnxflags, ...)
+{
+    mode_t mode = 0;
+    unsigned int initialval = 0;
+    int macflags = 0;
+
+    // Linux flags aren't the same values, so map them.
+    // O_RDONLY is zero in both of them, though.
+    #define MAPFLAG(fl) if (lnxflags & LINUX_##fl) { lnxflags &= ~LINUX_##fl; macflags |= fl; }
+    MAPFLAG(O_CREAT);
+    MAPFLAG(O_EXCL);
+    #undef MAPFLAG
+
+    if (lnxflags)  // uhoh, something we didn't handle!
+    {
+        errno = ENOTSUP;
+        return LINUX_SEM_FAILED;
+    } // if
+
+    // Have to use varargs if O_CREAT, grumble grumble.
+    if (macflags & O_CREAT)
+    {
+        va_list ap;
+        va_start(ap, lnxflags);
+        mode = (mode_t) va_arg(ap, uint32_t);  // mode_t is 4 bytes on Linux, 2 on Mac.
+        initialval = va_arg(ap, unsigned int);
+        va_end(ap);
+    } // if
+
+    sem_t *retval = sem_open(name, macflags, mode, initialval);
+    return (retval == SEM_FAILED) ? LINUX_SEM_FAILED : retval;
+} // mactrampoline_sem_open
 
 // pthread_t matches up closely enough, but much of the rest of the pthread
 //  structs don't, so we end up allocating the mac versions, and using the
