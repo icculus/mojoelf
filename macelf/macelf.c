@@ -174,6 +174,18 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
 {
     LoadedLibrary *lib = NULL;
 
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_SDL12
+    if ((native_override_sdl12) && (strcmp(soname, "libSDL-1.1.so.0") == 0))
+        soname = "libSDL-1.2.so.0";   // SDL 1.2 is backwards compatible with 1.1
+    #endif
+
+    #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
+    if ((native_override_openal) && (strcmp(soname, "libopenal-0.0.so") == 0))
+        soname = "libopenal.so.0";   // Some of the Loki ports (UT99) used this soname.
+    if ((native_override_openal) && (strcmp(soname, "libopenal.so.1") == 0))
+        soname = "libopenal.so.0";   // !!! FIXME: I'm not sure why the version changed...?
+    #endif
+
     // see if there's an ELF file already loaded we can use.
     const void *value = NULL;
     if (hash_find(loaded_ELFs, soname, &value))
@@ -217,8 +229,6 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     #endif
 
     #if MACELF_SUPPORT_NATIVE_OVERRIDE_OPENAL
-    if ((native_override_openal) && (strcmp(soname, "libopenal.so.1") == 0))
-        soname = "libopenal.so.0";   // !!! FIXME: I'm not sure why the version changed...?
     DO_OVERRIDE(openal, "libopenal.so.0");
     #endif
 
