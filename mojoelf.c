@@ -573,12 +573,13 @@ static int process_section_headers(ElfContext *ctx)
 } // process_section_headers
 
 
-// Get the ELF programs into memory at the right place and set protections.
+// Get the ELF programs into memory at the right place.
 static int map_pages(ElfContext *ctx)
 {
     // Get us an aligned block of memory where we can change page permissions.
     // This is big enough to store all the program blocks and place them at
     //  the correct relative offsets.
+    // !!! FIXME: should we be mapping each section separately?
     const size_t offset = (size_t) ctx->header->e_phoff;
     const ElfProgram *program = (const ElfProgram *) (ctx->buf + offset);
     const int header_count = (int) ctx->header->e_phnum;
@@ -601,19 +602,43 @@ static int map_pages(ElfContext *ctx)
         if ((program->p_type == PT_LOAD) && (program->p_memsz > 0))
         {
             uint8 *ptr = ((uint8 *) mmapaddr) + (program->p_vaddr - ctx->base);
+            Memcopy(ptr, ctx->buf + program->p_offset, program->p_filesz);
+        } // if
+    } // for
+
+    // we mprotect() these pages later in the process, since fixups might want
+    //  to write to memory that will eventually be marked read-only, etc.
+    //  That happens in protect_pages().
+
+    return 1;
+} // map_pages
+
+// Mark ELF pages with proper permissions.
+static int protect_pages(ElfContext *ctx)
+{
+    const size_t offset = (size_t) ctx->header->e_phoff;
+    const ElfProgram *program = (const ElfProgram *) (ctx->buf + offset);
+    const int header_count = (int) ctx->header->e_phnum;
+    const int mmapprot = PROT_READ | PROT_WRITE;
+    void *mmapaddr = (void *) ctx->retval->mmapaddr;
+    int i;
+
+    for (i = 0; i < header_count; i++, program++)
+    {
+        if ((program->p_type == PT_LOAD) && (program->p_memsz > 0))
+        {
+            uint8 *ptr = ((uint8 *) mmapaddr) + (program->p_vaddr - ctx->base);
             const size_t len = (const size_t) program->p_memsz;
             const int prot = ((program->p_flags & 1) ? PROT_EXEC : 0)  |
                              ((program->p_flags & 2) ? PROT_WRITE : 0) |
                              ((program->p_flags & 4) ? PROT_READ : 0)  ;
-            Memcopy(ptr, ctx->buf + program->p_offset, program->p_filesz);
             if ((prot != mmapprot) && (mprotect(ptr, len, prot) == -1))
                 DLOPEN_FAIL("mprotect failed");
         } // if
     } // for
 
-    return 1;
-} // map_pages
-
+    return 1;  // all good.
+} // protect_pages
 
 static int walk_dynamic_table(ElfContext *ctx)
 {
@@ -1148,6 +1173,7 @@ void *MOJOELF_dlopen_mem(const void *buf, const long buflen,
     else if (!load_external_dependencies(&ctx)) goto fail;
     else if (!build_export_list(&ctx)) goto fail;
     else if (!fixup_relocations(&ctx)) goto fail;
+    else if (!protect_pages(&ctx)) goto fail;
     else if (!call_so_init(&ctx)) goto fail;
 
     // we made it!
