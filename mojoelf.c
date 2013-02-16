@@ -185,6 +185,7 @@ typedef uintptr_t uintptr;
 // Warning: These may change for other architectures!
 #define R_NONE 0
 #define R_32 1
+#define R_PC32 2
 #define R_COPY 5
 #define R_GLOB_DATA 6
 #define R_JUMP_SLOT 7
@@ -930,16 +931,21 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
         // There are way more than these, but these seem to be the
         //  only ones average libraries use.
         // Note libc.so.6 itself also seems to use: R_*_64, R_*_TPOFF64
+// !!! FIXME: R_COPY is probably wrong.
+// !!! FIXME: This is all x86-specific. Research x86_64.
+        case R_COPY:
         case R_GLOB_DATA:
         case R_JUMP_SLOT:
-        case R_COPY:
             *fixup = addr;
             break;
         case R_RELATIVE:
             *fixup += (uintptr) (mmapaddr + r_addend);
             break;
         case R_32:  // !!! FIXME: presumable should be (uint32), not (uintptr).
-            *fixup = (uintptr) (addr + r_addend);
+            *fixup += (uintptr) (addr + r_addend);
+            break;
+        case R_PC32:  // !!! FIXME: presumable should be (uint32), not (uintptr).
+            *fixup += (uintptr) ((addr + r_addend) - ((uintptr) fixup));
             break;
         case R_NONE:
             break;  // do nothing.
