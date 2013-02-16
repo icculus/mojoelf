@@ -533,6 +533,16 @@ static int32_t **mactrampoline___ctype_toupper_loc(void)
     return &ptoupper_array;
 } // mactrampoline__ctype_toupper_loc
 
+static int mactrampoline___ctype_tolower(int ch)
+{
+    return tolower(ch);
+} // mactrampoline___ctype_tolower
+
+static int mactrampoline___ctype_toupper(int ch)
+{
+    return toupper(ch);
+} // mactrampoline___ctype_toupper
+
 static const uint16_t **mactrampoline___ctype_b_loc(void)
 {
     STUBBED("write me");
@@ -1782,6 +1792,12 @@ static int mactrampoline_sigaction(int sig, const void/*struct sigaction*/ *lnxa
     return -1;
 } // mactrampoline_sigaction
 
+static int mactrampoline_sigprocmask(int lnxhow, const sigset_t *set, sigset_t *oset)
+{
+    const int machow = lnxhow-1;  // these are all off by one between platforms at the moment.
+    return sigprocmask(machow, set, oset);
+} // mactrampoline_sigprocmask
+
 static int mactrampoline_fcvt_r(double number, int ndigits, int *decpt, int *sign, char *buf, size_t len)
 {
     STUBBED("this is wrong: not reentrant, wrong retval");
@@ -1838,15 +1854,16 @@ static int mactrampoline__setjmp(jmp_buf env)
     return setjmp(env);
 } // mactrampoline__setjmp
 
-static void mactrampoline_longjmp(jmp_buf env, int val)
-{
-    longjmp(env, val);
-} // mactrampoline_longjmp
-
 static void mactrampoline__longjmp(jmp_buf env, int val)
 {
     longjmp(env, val);
 } // mactrampoline__longjmp
+
+static int mactrampoline___sigsetjmp(jmp_buf env, int savemask)
+{
+    return sigsetjmp(env, savemask);
+} // mactrampoline___sigsetjmp
+
 
 #define LINUX_SEM_FAILED ((sem_t *)0)
 
@@ -2239,6 +2256,12 @@ static int mactrampoline_pthread_rwlockattr_setpshared(void/*pthread_rwlockattr_
     return pthread_rwlockattr_setpshared(*(pthread_rwlockattr_t **) lnxattr, pshared);
 } // mactrampoline_pthread_rwlockattr_setpshared
 
+static int mactrampoline_pthread_sigmask(int lnxhow, const sigset_t *set, sigset_t *oset)
+{
+    STUBBED("need to convert errors to Linux values");
+    const int machow = lnxhow-1;  // these are all off by one between Mac and Linux at the moment.
+    return pthread_sigmask(machow, set, oset);
+} // mactrampoline_pthread_sigmask
 
 // pthread_key_t is always uint32_t on Linux, it's uintptr_t on Mac OS X, so
 //  we need to keep an array of them and use the Linux half as the index.
@@ -2759,6 +2782,8 @@ int build_trampolines(void)
     return insert_symbol("stderr", stderr) &&
            insert_symbol("stdout", stdout) &&
            insert_symbol("stdin", stdin) &&
+           insert_symbol("environ", environ) &&
+           insert_symbol("__environ", environ) &&
            insert_symbol("program_invocation_name", program_invocation_name)
         #define MACTRAMPOLINE(typ,fn,params,args,ret) \
             && (insert_symbol(#fn, mactrampoline_##fn))
