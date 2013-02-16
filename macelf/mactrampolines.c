@@ -1077,6 +1077,13 @@ static double mactrampoline___pow_finite(double x, double y) { return pow(x, y);
 static float mactrampoline___powf_finite(float x, float y) { return powf(x, y); }
 static long double mactrampoline___powl_finite(long double x, long double y) { return powl(x, y); }
 
+static int mactrampoline_isnanf(float x) { return isnan(x); }
+static int mactrampoline_isnand(double x) { return isnan(x); }
+static int mactrampoline_isnanl(long double x) { return isnan(x); }
+static int mactrampoline___isnanf(float x) { return isnan(x); }
+static int mactrampoline___isnand(double x) { return isnan(x); }
+static int mactrampoline___isnanl(long double x) { return isnan(x); }
+
 
 // We only need a mutex for our global state during the
 //  dlopen/dlsym/dlclone() trampolines. Initial loading happens on the main
