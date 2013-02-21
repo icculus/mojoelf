@@ -162,7 +162,18 @@ static LoadedLibrary *allocate_loaded_lib(const char *soname, void *handle)
     lib->refcount = 1;
     if (hash_insert(loaded_ELFs, socpy, lib) == 1)
     {
-        //printf("Loaded ELF soname '%s'!\n", soname);
+        #if 1
+        if (!handle)
+            printf("Loaded native override for '%s'\n", soname);
+        else
+        {
+            void *addr = NULL;
+            unsigned long len = 0;
+            MOJOELF_getmmaprange(handle, &addr, &len);
+            printf("Loaded ELF soname '%s' => %p - %p (%lu bytes).\n",
+                    soname, addr, ((uint8_t *) addr)+(len-1), len);
+        } // else
+        #endif
         return lib;
     } // if
 
@@ -674,6 +685,15 @@ int main(int argc, char **argv, char **envp)
         mojoelf_resolver_deinit();
         return 1;
     } // if
+
+    else
+    {
+        void *addr = NULL;
+        unsigned long len = 0;
+        MOJOELF_getmmaprange(lib, &addr, &len);
+        printf("Loaded ELF executable '%s' => %p - %p (%lu bytes).\n",
+               argv[startarg], addr, ((uint8_t *) addr)+(len-1), len);
+    } // else
 
     if ((symbols_missing) || (dependencies_missing))
     {

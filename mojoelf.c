@@ -1297,5 +1297,15 @@ const void *MOJOELF_getentry(void *lib)
     return h ? h->entry : NULL;
 } // MOJOELF_getentry
 
+void MOJOELF_getmmaprange(void *lib, void **addr, unsigned long *len)
+{
+    const ElfHandle *h = (const ElfHandle *) lib;
+    if (addr)
+        *addr = h->mmapaddr;
+    if (len)
+        *len = (unsigned long) h->mmaplen;
+} // MOJOELF_getmmaprange
+
+
 // end of mojoelf.c ...
 
