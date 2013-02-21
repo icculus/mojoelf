@@ -2781,6 +2781,25 @@ static ssize_t mactrampoline_sendto(int fd, const void *buf, size_t buflen, int 
 } // mactrampoline_sendto
 
 
+// This has to be in a file compiled with -mstackrealign
+void missing_symbol_called(const char *missing_symbol)
+{
+    fflush(stdout);
+    fflush(stderr);
+    fprintf(stderr, "\n\nMissing symbol '%s' called!\n", missing_symbol);
+    fprintf(stderr, "Aborting.\n\n\n");
+    //STUBBED("output backtrace");
+    fflush(stderr);
+    _exit(1);
+} // missing_symbol_called
+
+// This has to be in a file compiled with -mstackrealign
+void trampoline_called(const char *sym)
+{
+    fprintf(stderr, "Calling symbol '%s'\n", sym);
+    fflush(stderr);
+} // trampoline_called
+
 // !!! FIXME: this should work like the native overrides, but honestly,
 // !!! FIXME:  who doesn't reference glibc?
 int build_trampolines(void)
@@ -2805,18 +2824,6 @@ int build_trampolines(void)
         #undef MACTRAMPOLINE_OVERRIDE
     ;
 } // build_trampolines
-
-
-void missing_symbol_called(const char *missing_symbol)
-{
-    fflush(stdout);
-    fflush(stderr);
-    fprintf(stderr, "\n\nMissing symbol '%s' called!\n", missing_symbol);
-    fprintf(stderr, "Aborting.\n\n\n");
-    //STUBBED("output backtrace");
-    fflush(stderr);
-    _exit(1);
-} // missing_symbol_called
 
 // end of mactrampolines.c ...
 

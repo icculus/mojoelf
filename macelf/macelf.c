@@ -19,6 +19,7 @@
 #include "macelf.h"
 #include "hashtable.h"
 
+static int ltrace = 0;
 static int run_with_missing_symbols = 0;
 static int report_missing_symbols = 0;
 static int run_with_missing_symbols_at_start = 0;
@@ -281,8 +282,7 @@ static void *mojoelf_loader(const char *soname, const char *rpath, const char *r
     return NULL;
 } // mojoelf_loader
 
-
-static void *mojoelf_resolver(void *handle, const char *sym)
+static void *mojoelf_resolver_internal(void *handle, const char *sym)
 {
     LoadedLibrary *lib = (LoadedLibrary *) handle;
     const void *addr = NULL;
@@ -352,7 +352,67 @@ static void *mojoelf_resolver(void *handle, const char *sym)
     } // else if
 
     return (void *) addr;
+} // mojoelf_resolver_internal
+
+static void *mojoelf_resolver(void *handle, const char *sym)
+{
+    void *fn = mojoelf_resolver_internal(handle, sym);
+    if ((fn) && (ltrace))
+    {
+        // !!! FIXME: code duplication.
+        static void *page = NULL;
+        static int pageused = 0;
+        static int pagesize = 0;
+        if (pagesize == 0)
+            pagesize = getpagesize();
+
+        if ((!page) || ((pagesize - pageused) < 32))
+        {
+            if (page)
+                mprotect(page, pagesize, PROT_READ | PROT_EXEC);
+            page = valloc(pagesize);
+            mprotect(page, pagesize, PROT_READ | PROT_WRITE | PROT_EXEC);
+            pageused = 0;
+        } // if
+
+        char *symcopy = strdup(sym);
+        void *trampoline = page + pageused;
+        char *ptr = (char *) trampoline;
+
+        #if defined(__i386__)
+        *(ptr++) = 0x55;  // push %ebp
+        *(ptr++) = 0x89;  // mov %esp,%ebp
+        *(ptr++) = 0xE5;  // mov %esp,%ebp
+        *(ptr++) = 0x68;  // pushl immediate
+        memcpy(ptr, &symcopy, sizeof (char *));
+        ptr += sizeof (char *);
+        *(ptr++) = 0xB8;  // movl immediate to %%eax
+        const void *fnptr = trampoline_called;
+        memcpy(ptr, &fnptr, sizeof (void *));
+        ptr += sizeof (void *);
+        *(ptr++) = 0xFF;  // call absolute in %%eax.
+        *(ptr++) = 0xD0;
+        *(ptr++) = 0x5D;  // pop %ebp (to remove argument we pushed for trampoline_called())
+        *(ptr++) = 0xB8;  // movl immediate to %%eax
+        memcpy(ptr, &fn, sizeof (void *));
+        ptr += sizeof (void *);
+        *(ptr++) = 0x5D;  // pop %ebp (to reset frame pointer).
+        *(ptr++) = 0xFF;  // jmp absolute in %%eax.
+        *(ptr++) = 0xE0;
+        #elif defined(__x86_64__)
+        #else
+        #error write me.
+        #endif
+
+        const int trampoline_len = (int) (ptr - ((char *) trampoline));
+        assert(trampoline_len <= 32);
+        pageused += trampoline_len;
+        fn = trampoline;
+    } // if
+
+    return fn;
 } // mojoelf_resolver
+
 
 static void nuke_loadedelfs_hash(const void *key, const void *value, void *data)
 {
@@ -565,6 +625,12 @@ int main(int argc, char **argv, char **envp)
             continue;
         } // else if
 
+        else if (strcmp(arg, "--ltrace") == 0)
+        {
+            ltrace = 1;
+            continue;
+        } // else if
+
         else if (strncmp(arg, "--", 2) == 0)
         {
             fprintf(stderr, "WARNING: Unknown command line option '%s'\n", arg);
@@ -586,6 +652,7 @@ int main(int argc, char **argv, char **envp)
         fprintf(stderr, "       --run-with-missing-symbols-at-start\n");
         fprintf(stderr, "       --native-overrides <options>\n");
         fprintf(stderr, "       --ld-library-path <path>\n");
+        fprintf(stderr, "       --ltrace\n");
         fprintf(stderr, "\n");
         return 1;
     } // if
