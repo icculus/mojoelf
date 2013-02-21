@@ -322,15 +322,16 @@ static void *mojoelf_resolver_internal(void *handle, const char *sym)
         if ((report_missing_symbols) || (run_with_missing_symbols))
         {
             symbols_missing++;
-            #ifdef __i386__
             static void *page = NULL;
             static int pageused = 0;
             static int pagesize = 0;
             if (pagesize == 0)
                 pagesize = getpagesize();
 
-            if ((!page) || ((pagesize - pageused) < 16))
+            if ((!page) || ((pagesize - pageused) < 32))
             {
+                if (page)
+                    mprotect(page, pagesize, PROT_READ | PROT_EXEC);
                 page = valloc(pagesize);
                 mprotect(page, pagesize, PROT_READ | PROT_WRITE | PROT_EXEC);
                 pageused = 0;
@@ -339,24 +340,43 @@ static void *mojoelf_resolver_internal(void *handle, const char *sym)
             char *symcopy = strdup(sym);
             void *trampoline = page + pageused;
             char *ptr = (char *) trampoline;
-            *(ptr++) = 0x55;  // push %ebp
-            *(ptr++) = 0x89;  // mov %esp,%ebp
-            *(ptr++) = 0xE5;  // mov %esp,%ebp
+
+            #if defined(__i386__)
+            *(ptr++) = 0x55;  // pushl %ebp
+            *(ptr++) = 0x89;  // movl %esp,%ebp
+            *(ptr++) = 0xE5;  //   ...movl %esp,%ebp
             *(ptr++) = 0x68;  // pushl immediate
             memcpy(ptr, &symcopy, sizeof (char *));
             ptr += sizeof (char *);
-            *(ptr++) = 0xB8;  // movl immediate to %%eax
+            *(ptr++) = 0xB8;  // movl immediate to %eax
             const void *fn = missing_symbol_called;
             memcpy(ptr, &fn, sizeof (void *));
             ptr += sizeof (void *);
-            *(ptr++) = 0xFF;  // call absolute in %%eax.
-            *(ptr++) = 0xD0;
-            const int trampoline_len = (int) (ptr - ((char *) trampoline));
-            assert(trampoline_len <= 16);
-            pageused += trampoline_len;
+            *(ptr++) = 0xFF;  // call absolute in %eax.
+            *(ptr++) = 0xD0;  //   ...call absolute in %eax.
+            #elif defined(__x86_64__)
+            *(ptr++) = 0x55;  // pushq %rbp
+            *(ptr++) = 0x48;  // movq %rsp,%rbp
+            *(ptr++) = 0x89;  //   ...movq %rsp,%rbp
+            *(ptr++) = 0xE5;  //   ...movq %rsp,%rbp
+            *(ptr++) = 0x48;  // movq immediate to %rdi (call arg1)
+            *(ptr++) = 0xBF;  //   ...movq immediate to %rdi (call arg1)
+            memcpy(ptr, &symcopy, sizeof (char *));
+            ptr += sizeof (char *);
+            *(ptr++) = 0x48;  // movq immediate to %rax
+            *(ptr++) = 0xB8;  //   ...movq immediate to %rax
+            const void *fn = missing_symbol_called;
+            memcpy(ptr, &fn, sizeof (void *));
+            ptr += sizeof (void *);
+            *(ptr++) = 0xFF;  // callq absolute in %rax.
+            *(ptr++) = 0xD0;  //   ...callq absolute in %rax.
             #else
             #error write me.
             #endif
+
+            const int trampoline_len = (int) (ptr - ((char *) trampoline));
+            assert(trampoline_len <= 32);
+            pageused += trampoline_len;
 
             return ((void *) trampoline);
         } // if
@@ -377,7 +397,7 @@ static void *mojoelf_resolver(void *handle, const char *sym)
         if (pagesize == 0)
             pagesize = getpagesize();
 
-        if ((!page) || ((pagesize - pageused) < 32))
+        if ((!page) || ((pagesize - pageused) < 64))
         {
             if (page)
                 mprotect(page, pagesize, PROT_READ | PROT_EXEC);
@@ -393,30 +413,54 @@ static void *mojoelf_resolver(void *handle, const char *sym)
         #if defined(__i386__)
         *(ptr++) = 0x55;  // push %ebp
         *(ptr++) = 0x89;  // mov %esp,%ebp
-        *(ptr++) = 0xE5;  // mov %esp,%ebp
+        *(ptr++) = 0xE5;  //   ...mov %esp,%ebp
         *(ptr++) = 0x68;  // pushl immediate
         memcpy(ptr, &symcopy, sizeof (char *));
         ptr += sizeof (char *);
-        *(ptr++) = 0xB8;  // movl immediate to %%eax
+        *(ptr++) = 0xB8;  // movl immediate to %eax
         const void *fnptr = trampoline_called;
         memcpy(ptr, &fnptr, sizeof (void *));
         ptr += sizeof (void *);
-        *(ptr++) = 0xFF;  // call absolute in %%eax.
+        *(ptr++) = 0xFF;  // call absolute in %eax.
         *(ptr++) = 0xD0;
         *(ptr++) = 0x5D;  // pop %ebp (to remove argument we pushed for trampoline_called())
-        *(ptr++) = 0xB8;  // movl immediate to %%eax
+        *(ptr++) = 0xB8;  // movl immediate to %eax
         memcpy(ptr, &fn, sizeof (void *));
         ptr += sizeof (void *);
         *(ptr++) = 0x5D;  // pop %ebp (to reset frame pointer).
-        *(ptr++) = 0xFF;  // jmp absolute in %%eax.
+        *(ptr++) = 0xFF;  // jmp absolute in %eax.
         *(ptr++) = 0xE0;
         #elif defined(__x86_64__)
+        *(ptr++) = 0x55;  // pushq %rbp
+        *(ptr++) = 0x48;  // movq %rsp,%rbp
+        *(ptr++) = 0x89;  //   ...movq %rsp,%rbp
+        *(ptr++) = 0xE5;  //   ...movq %rsp,%rbp
+        *(ptr++) = 0x57;  // pushq %rdi
+        *(ptr++) = 0x48;  // movq immediate to %rdi (call arg1)
+        *(ptr++) = 0xBF;  //   ...movq immediate to %rdi (call arg1)
+        memcpy(ptr, &symcopy, sizeof (char *));
+        ptr += sizeof (char *);
+        *(ptr++) = 0x48;  // movq immediate to %rax
+        *(ptr++) = 0xB8;  //   ...movq immediate to %rax
+        const void *fn = trampoline_called;
+        memcpy(ptr, &fn, sizeof (void *));
+        ptr += sizeof (void *);
+        *(ptr++) = 0xFF;  // callq absolute in %rax.
+        *(ptr++) = 0xD0;  //   ...callq absolute in %rax.
+        *(ptr++) = 0x5F;  // popq %rdi (to restore reg we used for trampoline_called())
+        *(ptr++) = 0x48;  // movq immediate to %rax
+        *(ptr++) = 0xB8;  //   ...movq immediate to %rax
+        memcpy(ptr, &fn, sizeof (void *));
+        ptr += sizeof (void *);
+        *(ptr++) = 0x5D;  // popq %rbp (to reset frame pointer).
+        *(ptr++) = 0xFF;  // jmpq absolute in %rax.
+        *(ptr++) = 0xE0;
         #else
         #error write me.
         #endif
 
         const int trampoline_len = (int) (ptr - ((char *) trampoline));
-        assert(trampoline_len <= 32);
+        assert(trampoline_len <= 64);
         pageused += trampoline_len;
         fn = trampoline;
     } // if
@@ -729,58 +773,86 @@ int main(int argc, char **argv, char **envp)
 
     #if defined(__i386__)
     __asm__ __volatile__ (
-            "pushl %%eax \n\t"  // !!! FIXME: is this stack-allocated like argv?
+        "pushl %%eax \n\t"  // !!! FIXME: is this stack-allocated like argv?
 
-            // Need to copy argv array to the stack
-            //  Linux entry point expects the array, not a pointer to it,
-            //  to be at the start of the stack.
-            "movl %%ecx,%%ebp  \n\t"  // save a copy of ecx; loop clobbers it.
-            "subl %%ecx,%%esp  \n\t"  // make room for argv array.
-            "0:  \n\t"
-            "movl (%%edx),%%ebx  \n\t"
-            "movl %%ebx,(%%esp)  \n\t"
-            "addl $4,%%edx  \n\t"
-            "addl $4,%%esp  \n\t"
-            "subl $4,%%ecx  \n\t"
-            "cmpl $0,%%ecx  \n\t"
-            "jnz 0b  \n\t"
-            "subl %%ebp,%%esp  \n\t"  // move back again.
+        // Need to copy argv array to the stack
+        //  Linux entry point expects the array, not a pointer to it,
+        //  to be at the start of the stack.
+        "movl %%ecx,%%ebp  \n\t"  // save a copy of ecx; loop clobbers it.
+        "subl %%ecx,%%esp  \n\t"  // make room for argv array.
+        "0:  \n\t"
+        "movl (%%edx),%%ebx  \n\t"
+        "movl %%ebx,(%%esp)  \n\t"
+        "addl $4,%%edx  \n\t"
+        "addl $4,%%esp  \n\t"
+        "subl $4,%%ecx  \n\t"
+        "cmpl $0,%%ecx  \n\t"
+        "jnz 0b  \n\t"
+        "subl %%ebp,%%esp  \n\t"  // move back again.
 
-            "pushl %%esi \n\t"   // this will be argc in the entry point.
+        "pushl %%esi \n\t"   // this will be argc in the entry point.
 
-            // Clear all the registers.
-            // Store the entry point in %%ebp, since the entry point
-            //  will clears that register.
-            "movl %%edi,%%ebp  \n\t"
-            "xorl %%eax,%%eax  \n\t"
-            "xorl %%ebx,%%ebx  \n\t"
-            "xorl %%ecx,%%ecx  \n\t"
-            "xorl %%edx,%%edx  \n\t"
-            "xorl %%esi,%%esi  \n\t"
-            "xorl %%edi,%%edi  \n\t"
+        // Clear all the registers.
+        // Store the entry point in %ebp, since the entry point
+        //  will clear that register.
+        "movl %%edi,%%ebp  \n\t"
+        "xorl %%eax,%%eax  \n\t"
+        "xorl %%ebx,%%ebx  \n\t"
+        "xorl %%ecx,%%ecx  \n\t"
+        "xorl %%edx,%%edx  \n\t"
+        "xorl %%esi,%%esi  \n\t"
+        "xorl %%edi,%%edi  \n\t"
 
-            // Tail call into the entry point! We're in Linux land!
-            "jmpl *%%ebp \n\t"
-        : // no outputs
-        : "D" (entry), "a" (envp), "d" (argv+startarg), "S" (argc-startarg),
-          "c" (((argc-startarg)+1)*sizeof (char*))
-        : "memory", "cc"
+        // Tail call into the entry point! We're in Linux land!
+        "jmpl *%%ebp \n\t"
+            : // no outputs
+            : "D" (entry), "a" (envp), "d" (argv+startarg),
+              "S" (argc-startarg), "c" (((argc-startarg)+1)*sizeof (char*))
+            : "memory", "cc"
     );
-    #elif 0 // !!! FIXME defined(__x86_64__)
+
+    // !!! FIXME: Untested! Even if the entry point ABI is identical to x86-32,
+    // !!! FIXME:  this probably still needs minor tweaks.
+    #elif defined(__x86_64__)
     __asm__ __volatile__ (
-            "pushq %%rax \n\t"
-            "pushq %%rdx \n\t"
-            "pushq %%rcx \n\t"
-            "xorq %%rax,%%rax  \n\t"
-            "xorq %%rbx,%%rbx  \n\t"
-            "xorq %%rcx,%%rcx  \n\t"
-            "xorq %%rdx,%%rdx  \n\t"
-            "xorq %%rsi,%%rsi  \n\t"
-            "jmpq *%%rdi \n\t"
-        : // no outputs
-        : "D" (entry), "a" (envp), "d" (argv+1), "c" (argc)
-        : "memory", "cc"
+        "pushq %%rax \n\t"  // !!! FIXME: is this stack-allocated like argv?
+
+        // Need to copy argv array to the stack
+        //  Linux entry point expects the array, not a pointer to it,
+        //  to be at the start of the stack.
+        "movq %%rcx,%%rbp  \n\t"  // save a copy of ecx; loop clobbers it.
+        "subq %%rcx,%%rsp  \n\t"  // make room for argv array.
+        "0:  \n\t"
+        "movq (%%rdx),%%rbx  \n\t"
+        "movq %%rbx,(%%rsp)  \n\t"
+        "addq $8,%%rdx  \n\t"
+        "addq $8,%%rsp  \n\t"
+        "subq $8,%%rcx  \n\t"
+        "cmpq $0,%%rcx  \n\t"
+        "jnz 0b  \n\t"
+        "subq %%rbp,%%rsp  \n\t"  // move back again.
+
+        "pushq %%rsi \n\t"   // this will be argc in the entry point.
+
+        // Clear all the registers.
+        // Store the entry point in %rbp, since the entry point
+        //  will clear that register.
+        "movq %%rdi,%%rbp  \n\t"
+        "xorq %%rax,%%rax  \n\t"
+        "xorq %%rbx,%%rbx  \n\t"
+        "xorq %%rcx,%%rcx  \n\t"
+        "xorq %%rdx,%%rdx  \n\t"
+        "xorq %%rsi,%%rsi  \n\t"
+        "xorq %%rdi,%%rdi  \n\t"
+
+        // Tail call into the entry point! We're in Linux land!
+        "jmpq *%%rbp \n\t"
+            : // no outputs
+            : "D" (entry), "a" (envp), "d" (argv+startarg),
+              "S" (argc-startarg), "c" (((argc-startarg)+1)*sizeof (char*))
+            : "memory", "cc"
     );
+
     #else
     #error Please define your platform.
     #endif

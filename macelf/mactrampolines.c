@@ -767,6 +767,8 @@ typedef struct LinuxStat64
     uint64_t st_ino;
 } LinuxStat64;
 
+typedef LinuxStat32 LinuxStat;
+
 #define NATIVE_STAT_BITS 32
 
 #elif defined(__x86_64__)
@@ -794,6 +796,7 @@ typedef struct LinuxStat64
 } LinuxStat64;
 
 #define NATIVE_STAT_BITS 64
+typedef LinuxStat64 LinuxStat;
 
 #else
 #error Please define your platform.
@@ -899,32 +902,32 @@ static int mactrampoline___fxstat64(int ver, int fd, LinuxStat64 *lnxstat)
     XSTAT_IMPL(64, fstat, fd);
 } // mactrampoline___fxstat64
 
-static int mactrampoline___xstat(int ver, const char *path, LinuxStat32 *lnxstat)
+static int mactrampoline___xstat(int ver, const char *path, LinuxStat *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, stat, path);
 } // mactrampoline___xstat
 
-static int mactrampoline___lxstat(int ver, const char *path, LinuxStat32 *lnxstat)
+static int mactrampoline___lxstat(int ver, const char *path, LinuxStat *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, lstat, path);
 } // mactrampoline___lxstat
 
-static int mactrampoline___fxstat(int ver, int fd, LinuxStat32 *lnxstat)
+static int mactrampoline___fxstat(int ver, int fd, LinuxStat *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, fstat, fd);
 } // mactrampoline___fxstat
 
-static int mactrampoline_stat(int ver, const char *path, LinuxStat32 *lnxstat)
+static int mactrampoline_stat(int ver, const char *path, LinuxStat *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, stat, path);
 } // mactrampoline_stat
 
-static int mactrampoline_lstat(int ver, const char *path, LinuxStat32 *lnxstat)
+static int mactrampoline_lstat(int ver, const char *path, LinuxStat *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, lstat, path);
 } // mactrampoline_lstat
 
-static int mactrampoline_fstat(int ver, int fd, LinuxStat32 *lnxstat)
+static int mactrampoline_fstat(int ver, int fd, LinuxStat *lnxstat)
 {
     XSTAT_IMPL(NATIVE_STAT_BITS, fstat, fd);
 } // mactrampoline_fstat
