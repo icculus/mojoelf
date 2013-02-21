@@ -242,6 +242,14 @@ static void *mactrampoline___memcpy_chk(void *dst, const void *src, size_t len, 
     return memcpy(dst, src, len);
 } // mactrampoline___memcpy_chk
 
+static void *mactrampoline___rawmemchr(const void *s, int ch)
+{
+    char *ptr = (char *) s;
+    while (((int) *ptr) != ch)
+        ptr++;
+    return ptr;
+} // mactrampoline___rawmemchr
+
 static char *mactrampoline___strcpy_chk(char *dst, const char *src, size_t dstlen)
 {
     STUBBED("check for overflow?");
