@@ -306,7 +306,7 @@ static void *mojoelf_resolver_internal(void *handle, const char *sym)
             addr = MOJOELF_dlsym(lib->handle, sym);
     } // if
 
-    else  // uh oh, we couldn't satify this dependency!
+    else  // uh oh, we couldn't satisfy this dependency!
     {
         // don't ever supply this; it's a weak symbol used by gprof and should resolve to NULL.
         if (strcmp(sym, "__gmon_start__") == 0)
@@ -625,6 +625,24 @@ static void setup_native_overrides(const char *_list)
 } // setup_native_overrides
 
 
+static void set_xdg_path()
+{
+    if (getenv("XDG_DATA_PATH") != NULL)
+        return;  // already set, don't override it.
+
+    const char *home = getenv("HOME");
+    if (!home)
+        return;  // oh well.
+
+    const char *append = "/Library/Application Support/MojoELF";
+    const size_t len = strlen(home) + strlen(append) + 1;
+    char *path = (char *) alloca(len);
+    snprintf(path, len, "%s%s", home, append);
+    mkdir(path, 0600);
+    setenv("XDG_DATA_PATH", path, 1);
+} // set_xdg_path
+
+
 // looks a lot like main(), huh?  :)
 typedef void(*EntryFn)(int,char**,char**);
 
@@ -633,8 +651,6 @@ int main(int argc, char **argv, char **envp)
     char *elf = NULL;
     int startarg = 1;
     int i;
-
-    ld_library_path = getenv("LD_LIBRARY_PATH");
 
     for (i = 1; i < argc; i++)
     {
@@ -720,6 +736,11 @@ int main(int argc, char **argv, char **envp)
 
     elf = argv[startarg];
     program_invocation_name = elf;
+
+    if (!ld_library_path)  // try this if nothing else was specified.
+        ld_library_path = getenv("LD_LIBRARY_PATH");
+
+    set_xdg_path();  // set here, in case a static constructor needs this.
 
 // !!! FIXME: use our mmap() code instead.
     void *lib = MOJOELF_dlopen_file(argv[startarg], &mojoelf_callbacks);
