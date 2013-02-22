@@ -541,15 +541,6 @@ static int32_t **mactrampoline___ctype_toupper_loc(void)
     return &ptoupper_array;
 } // mactrampoline__ctype_toupper_loc
 
-static int mactrampoline___ctype_tolower(int ch)
-{
-    return tolower(ch);
-} // mactrampoline___ctype_tolower
-
-static int mactrampoline___ctype_toupper(int ch)
-{
-    return toupper(ch);
-} // mactrampoline___ctype_toupper
 
 static const uint16_t **mactrampoline___ctype_b_loc(void)
 {
@@ -2814,7 +2805,9 @@ int build_trampolines(void)
            insert_symbol("stdin", stdin) &&
            insert_symbol("environ", environ) &&
            insert_symbol("__environ", environ) &&
-           insert_symbol("program_invocation_name", program_invocation_name)
+           insert_symbol("program_invocation_name", program_invocation_name) &&
+           insert_symbol("__ctype_tolower", (void*) (mactrampoline___ctype_tolower_loc())) &&
+           insert_symbol("__ctype_toupper", (void*) (mactrampoline___ctype_toupper_loc()))
         #define MACTRAMPOLINE(typ,fn,params,args,ret) \
             && (insert_symbol(#fn, mactrampoline_##fn))
         #define MACTRAMPOLINE_PRINTF(fn, params, args) \
