@@ -931,9 +931,16 @@ static int do_fixup(ElfContext *ctx, const uint32 r_type, const uint32 r_sym,
         // There are way more than these, but these seem to be the
         //  only ones average libraries use.
         // Note libc.so.6 itself also seems to use: R_*_64, R_*_TPOFF64
-// !!! FIXME: R_COPY is probably wrong.
 // !!! FIXME: This is all x86-specific. Research x86_64.
         case R_COPY:
+            if (!r_sym)
+                DLOPEN_FAIL("Bogus copy fixup");
+            // !!! FIXME: this should check the source and dest symbols,
+            // !!! FIXME:  use the smaller size (but they _should_ match
+            // !!! FIXME:  if everything is built correctly. Naturally, this
+            // !!! FIXME:  will fail to be true eventually).
+            memcpy(fixup, (void *) addr, (ctx->symtab+r_sym)->st_size);
+            break;
         case R_GLOB_DATA:
         case R_JUMP_SLOT:
             *fixup = addr;
