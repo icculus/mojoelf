@@ -80,7 +80,7 @@ static int find_soname_file_by_abspath(const char *path, const char *soname)
 {
     if (path == NULL)
         return -1;
-    const size_t len = strlen(path) + strlen(soname) + 1;
+    const size_t len = strlen(path) + strlen(soname) + 2;
     char *fullpath = (char *) alloca(len);
     snprintf(fullpath, len, "%s/%s", path, soname);
     return open(soname, O_RDONLY);
