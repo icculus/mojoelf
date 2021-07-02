@@ -29,7 +29,7 @@ static const char *test_person(void)
     return retval;
 } // test_person
 
-static void *test_resolver(const char *sym)
+static void *test_resolver(void *handle, const char *sym)
 {
     if (strcmp(sym, "person") == 0)
         return test_person;
@@ -38,6 +38,7 @@ static void *test_resolver(const char *sym)
 
 int main(int argc, char **argv)
 {
+    static const MOJOELF_Callbacks callbacks = { NULL, test_resolver, NULL };
     int (*hello)(const int people_count) = NULL;
     void *lib = NULL;
     int rc;
@@ -46,7 +47,7 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++)
     {
         printf("opening '%s'...\n", argv[i]);
-        lib = MOJOELF_dlopen_file(argv[i], NULL, test_resolver);
+        lib = MOJOELF_dlopen_file(argv[i], &callbacks);
         if (lib == NULL)
             printf("failed '%s'! (%s)\n", argv[i], MOJOELF_dlerror());
         else
