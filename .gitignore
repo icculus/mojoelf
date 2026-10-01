@@ -1,4 +1,3 @@
-syntax:glob
 test/hello.so
 test/test
 test/mojoelf
