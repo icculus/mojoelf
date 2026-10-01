@@ -15,10 +15,14 @@
  *
  * https://github.com/icculus/mojoelf
  *
- * MojoELF is an ELF binary loader that runs in your application instead of as
- * part of the C runtime. Its most useful feature is that, unlike the standard
- * `dlopen()`, it can load an ELF file from a place other than the filesystem.
- * Notably, it can load one from a buffer in memory.
+ * MojoELF is an ELF binary loader that runs in your application, instead of
+ * as part of the C runtime. Its most useful feature is that, unlike the
+ * standard `dlopen()`, it can load an ELF file from a place other than the
+ * filesystem. Notably, it can load one from a buffer in memory.
+ *
+ * It can also be useful for overriding specific parts of the dependency
+ * management process, such as loading a replacement library or quietly
+ * replacing a function, etc.
  *
  * To use MojoELF:
  *
