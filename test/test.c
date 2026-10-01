@@ -29,16 +29,31 @@ static const char *test_person(void)
     return retval;
 } // test_person
 
+
+static void *test_loader(const char *soname, const char *rpath, const char *runpath)
+{
+    // just pretend we provide glibc, with a non-NULL return.
+    if (strcmp(soname, "libc.so.6") == 0) {
+        return (void *) 0x1;
+    }
+    return NULL;
+}
+
 static void *test_resolver(void *handle, const char *sym)
 {
-    if (strcmp(sym, "person") == 0)
+    if (strcmp(sym, "person") == 0) {
         return test_person;
+    } else if (handle == ((void *) 0x1)) {  // our fake glibc.
+        if (strcmp(sym, "printf") == 0) {
+            return printf;  // just return the glibc one linked to this process.
+        }
+    }
     return NULL;
 } // test_resolver
 
 int main(int argc, char **argv)
 {
-    static const MOJOELF_Callbacks callbacks = { NULL, test_resolver, NULL };
+    static const MOJOELF_Callbacks callbacks = { test_loader, test_resolver, NULL };
     int (*hello)(const int people_count) = NULL;
     void *lib = NULL;
     int rc;
