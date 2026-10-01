@@ -1195,12 +1195,14 @@ void MOJOELF_dlclose(void *lib)
         return;
     }
 
+#if 0  // !!! FIXME: this is crashing.
     // ELF spec says FINI_ARRAY is executed in reverse order, so count down.
     if (h->fini_array != NULL) {
         for (int i = h->fini_array_count-1; i >= 0; i--) {
             ((ElfFiniFn) h->fini_array[i])();
         }
     }
+#endif
 
     if (h->fini != NULL) {
         ((ElfFiniFn) h->fini)();
