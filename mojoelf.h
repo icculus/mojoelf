@@ -15,10 +15,10 @@
  *
  * https://github.com/icculus/mojoelf
  *
- * MojoELF is an ELF binary loader that runs in your application instead of
- * as part of the C runtime. Its most useful feature is that, unlike the
- * standard `dlopen()`, it can load an ELF file from a place other than the
- * filesystem. Notably, it can load one from a buffer in memory.
+ * MojoELF is an ELF binary loader that runs in your application instead of as
+ * part of the C runtime. Its most useful feature is that, unlike the standard
+ * `dlopen()`, it can load an ELF file from a place other than the filesystem.
+ * Notably, it can load one from a buffer in memory.
  *
  * To use MojoELF:
  *
@@ -27,27 +27,29 @@
  *   library (but you could probably do that if you like).
  * - Compile with these #defines set as you please, or change the top of
  *   mojoelf.c:
- *   ```c
+ *
+ * ```c
  *   #define MOJOELF_SUPPORT_DLERROR 0  // remove MOJOELF_dlerror() + lots of strings.
  *   #define MOJOELF_SUPPORT_DLOPEN_FILE 0 // remove MOJOELF_dlopen_file()
  *   #define MOJOELF_REDUCE_LIBC_DEPENDENCIES 0  // use less libc calls. Scary!
  *   #define NDEBUG 1  // Turns off assert, which removes libc dependencies.
- *   ```
- * - Your calling code should `#include mojoelf.h`
- * - Put your ELF library in memory, and call MOJOELF_dlopen_mem() with the
- *   address of the memory buffer, the size of the buffer, and (optionally),
- *   callbacks that handle symbol resolution (they can be NULL). Refer to the
- *   documentation on MOJOELF_LoaderCallback, MOJOELF_ResolverCallback, and
- *   MOJOELF_UnloaderCallback for details.
- * - If MOJOELF_dlopen_mem() returns non-NULL, the library is ready to use. If
- *   it returns NULL, there was a problem (MOJOELF_dlerror() can give you a
- *   human-readable error message). On success, you can free your buffer; we
- *   don't need it after MOJOELF_dlopen_mem() returns.
- * - MOJOELF_dlopen_file() does the same thing, but takes a filename instead of
- *   a memory buffer. Internally, it just loads the file into a malloc()'d
- *   buffer and calls MOJOELF_dlopen_mem().
- * - To request entry points into the library, use MOJOELF_dlsym():
- *   ```c
+ * ```
+ *
+ *  - Your calling code should `#include mojoelf.h` - Put your ELF library in
+ * memory, and call MOJOELF_dlopen_mem() with the address of the memory
+ * buffer, the size of the buffer, and (optionally), callbacks that handle
+ * symbol resolution (they can be NULL). Refer to the documentation on
+ * MOJOELF_LoaderCallback, MOJOELF_ResolverCallback, and
+ * MOJOELF_UnloaderCallback for details. - If MOJOELF_dlopen_mem() returns
+ * non-NULL, the library is ready to use. If it returns NULL, there was a
+ * problem (MOJOELF_dlerror() can give you a human-readable error message). On
+ * success, you can free your buffer; we don't need it after
+ * MOJOELF_dlopen_mem() returns. - MOJOELF_dlopen_file() does the same thing,
+ * but takes a filename instead of a memory buffer. Internally, it just loads
+ * the file into a malloc()'d buffer and calls MOJOELF_dlopen_mem(). - To
+ * request entry points into the library, use MOJOELF_dlsym():
+ *
+ * ```c
  *   typedef int (*my_fn_type)(int argument);
  *   my_fn_type my_function = (my_fn_type) MOJOELF_dlsym(lib, "AwesomeFunc");
  *   if (my_function == NULL) {
@@ -55,20 +57,20 @@
  *   } else {
  *       printf("AwesomeFunc() returns %d\n", my_function(123));
  *   }
- *   ```
- * - When you are done with a library, call `MOJOELF_dlclose()` to free any
- *   resources. All pointers returned by `MOJOELF_dlsym()` for this library are
- *   invalid after this call.
- * - Other fun stuff: `MOJOELF_getentry()` gets you the entry point for the
- *   ELF file (which isn't useful on shared libraries, but is how you eventually
- *   get to main() in an executable).
+ * ```
+ *
+ *  - When you are done with a library, call `MOJOELF_dlclose()` to free any
+ * resources. All pointers returned by `MOJOELF_dlsym()` for this library are
+ * invalid after this call. - Other fun stuff: `MOJOELF_getentry()` gets you
+ * the entry point for the ELF file (which isn't useful on shared libraries,
+ * but is how you eventually get to main() in an executable).
  *
  * Thread safety:
  *
- * MojoELF provides no locking mechanisms, and has a piece of global state that
- * almost any function can set (the MOJOELF_dlerror() state). As such, the app
- * is responsible for providing a serialization method if they plan to use
- * MojoELF from multiple threads at once.
+ * MojoELF provides no locking mechanisms, and has a piece of global state
+ * that almost any function can set (the MOJOELF_dlerror() state). As such,
+ * the app is responsible for providing a serialization method if they plan to
+ * use MojoELF from multiple threads at once.
  *
  * Other stuff:
  *
