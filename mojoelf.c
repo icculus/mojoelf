@@ -130,6 +130,7 @@ typedef uintptr_t uintptr;
 
 #if !MOJOELF_SUPPORT_DLERROR
     #define set_dlerror(x) do {} while (0)
+    const char *MOJOELF_dlerror(void) { return NULL; }  // just so this symbol will always resolve.
 #else
     static const char *dlerror_msg = NULL;
     static inline void set_dlerror(const char *msg) { dlerror_msg = msg; }

@@ -1,0 +1,41 @@
+projectfullname = MojoELF
+projectshortname = MojoELF
+incsubdir = .
+wikisubdir =
+#readmesubdir = docs
+apiprefixregex = MOJOELF_
+mainincludefname = mojoelf.h
+versionfname = mojoelf.h
+versionmajorregex = \A\#define\s+MOJOELF_MAJOR_VERSION\s+(\d+)\Z
+versionminorregex = \A\#define\s+MOJOELF_MINOR_VERSION\s+(\d+)\Z
+versionmicroregex = \A\#define\s+MOJOELF_MICRO_VERSION\s+(\d+)\Z
+#apipropertyregex = \A\s*\#\s*define\s+SDL_PROP_
+selectheaderregex = \Amojoelf\.h\Z
+wikidocsectionsym = MOJOELF_WIKI_DOCUMENTATION_SECTION
+forceinlinesym = MOJOELF_FORCE_INLINE
+deprecatedsym = MOJOELF_DEPRECATED
+declspecsym = MOJOELF_DECL
+callconvsym = MOJOELF_CALL
+projecturl = https://github.com/icculus/mojoelf
+wikiurl = https://wiki.icculus.org/
+bugreporturl = https://github.com/icculus/mojoelf/issues/new
+warn_about_missing = 0
+#wikipreamble = (This is the documentation for SDL3, which is the current stable version. [SDL2](https://wiki.libsdl.org/SDL2/) was the previous version!)
+wikiheaderfiletext = Defined in [<%fname%>](https://github.com/icculus/mojoelf/blob/main/%fname%)
+
+manpageheaderfiletext = Defined in %fname%
+#manpagesymbolfilterregex = \A[US]int\d+\Z
+
+# All SDL_test_* headers become undefined categories, everything else just converts like SDL_audio.h -> Audio
+# A handful of others we fix up in the header itself with /* WIKI CATEGORY: x */ comments.
+#headercategoryeval = s/\ASDL_test_?.*?\.h\Z//; s/\ASDL_?(.*?)\.h\Z/$1/; ucfirst();
+
+quickrefenabled = 1
+quickrefcategoryorder = MojoELF
+quickreftitle = MojoELF API Quick Reference
+quickrefurl = https://github.com/icculus/mojoelf
+quickrefdesc = The latest version of this document can be found at https://wiki.icculus.org/MojoELF/QuickReference
+#quickrefmacroregex = \A(SDL_PLATFORM_.*|SDL_.*_INTRINSICS|SDL_Atomic...Ref|SDL_assert.*?|SDL_COMPILE_TIME_ASSERT|SDL_arraysize|SDL_Swap[BL]E\d\d|SDL_[a-z]+_cast)\Z
+
+envvarenabled = 0
+
