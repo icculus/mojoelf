@@ -1,4 +1,4 @@
-/**
+/*
  * MojoELF; load ELF binaries from a memory buffer.
  *
  * Please see the file LICENSE.txt in the source's root directory.
