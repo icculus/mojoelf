@@ -40,24 +40,24 @@
  *   buffer, the size of the buffer, and (optionally), callbacks that handle
  *   symbol resolution (they can be NULL). Refer to the documentation on
  *   MOJOELF_LoaderCallback, MOJOELF_ResolverCallback, and
- *   MOJOELF_UnloaderCallback for details. - If MOJOELF_dlopen_mem() returns
- *   non-NULL, the library is ready to use. If it returns NULL, there was a
- *   problem (MOJOELF_dlerror() can give you a human-readable error message).
- *   On success, you can free your buffer; we don't need it after
- *   MOJOELF_dlopen_mem() returns. - MOJOELF_dlopen_file() does the same
- *   thing, but takes a filename instead of a memory buffer. Internally, it
- *   just loads the file into a malloc()'d buffer and calls
- *   MOJOELF_dlopen_mem(). - To request entry points into the library, use
- *   MOJOELF_dlsym():
+ *   MOJOELF_UnloaderCallback for details.
+ * - If MOJOELF_dlopen_mem() returns non-NULL, the library is ready to use. If
+ *   it returns NULL, there was a problem (MOJOELF_dlerror() can give you a
+ *   human-readable error message). On success, you can free your buffer; we
+ *   don't need it after MOJOELF_dlopen_mem() returns.
+ * - MOJOELF_dlopen_file() does the same thing, but takes a filename instead
+ *   of a memory buffer. Internally, it just loads the file into a malloc()'d
+ *   buffer and calls MOJOELF_dlopen_mem().
+ * - To request entry points into the library, use MOJOELF_dlsym():
  *
  * ```c
- *   typedef int (*my_fn_type)(int argument);
- *   my_fn_type my_function = (my_fn_type) MOJOELF_dlsym(lib, "AwesomeFunc");
- *   if (my_function == NULL) {
- *       printf("couldn't find AwesomeFunc!\n");
- *   } else {
- *       printf("AwesomeFunc() returns %d\n", my_function(123));
- *   }
+ * typedef int (*my_fn_type)(int argument);
+ * my_fn_type my_function = (my_fn_type) MOJOELF_dlsym(lib, "AwesomeFunc");
+ * if (my_function == NULL) {
+ *     printf("couldn't find AwesomeFunc!\n");
+ * } else {
+ *     printf("AwesomeFunc() returns %d\n", my_function(123));
+ * }
  * ```
  *
  * - When you are done with a library, call `MOJOELF_dlclose()` to free any
