@@ -6,13 +6,6 @@
  *  This file written by Ryan C. Gordon.
  */
 
-#ifndef INCL_MOJOELF_H
-#define INCL_MOJOELF_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* WIKI CATEGORY: MojoELF */
 
 /**
@@ -83,6 +76,12 @@ extern "C" {
  * licensing and redistribution rights.
  */
 
+#ifndef INCL_MOJOELF_H
+#define INCL_MOJOELF_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // initial API setup stuff...
 
